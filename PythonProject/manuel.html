@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ISA315 Assistant – Manual</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script type="module" src="assets/Imput/main.js"></script>
+    <script src="assets/Imput/listener.js" defer></script>
+    <script src="assets/Imput/fallback.js" defer></script>
+
+</head>
+<body data-page="manuel">
+  <header class="topbar">
+    <div class="header-left">
+      <button id="btnBack" class="header-back">Back</button>
+      <div class="brand">
+        <img src="assets/ey-logo.png" alt="EY" />
+        <a class="logo" href="index.html">ISA315 Assistant</a>
+      </div>
+      <nav class="navmenu" aria-label="Quick navigation">
+        <button id="navToggle" class="navbtn" aria-haspopup="true" aria-expanded="false" aria-controls="navPanel">
+          Navigate… <span class="chev" aria-hidden="true"></span>
+        </button>
+        <div id="navPanel" class="navpanel" role="menu" hidden>
+          <a role="menuitem" class="navitem" href="overview.html">Overview</a>
+          <a role="menuitem" class="navitem" href="manuel.html">Manual entry</a>
+          <a role="menuitem" class="navitem" href="contact.html">Contact</a>
+          <a role="menuitem" class="navitem" href="error.html">Report issue</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card" style="margin-bottom:12px">
+      <h2 style="margin:0 0 6px">Manual entry</h2>
+      <p class="small">Fill <strong>Project basics</strong> first – we reuse those in text generation. Sections below are collapsible; each question lets you attach screenshots.</p>
+
+      <div class="row" style="margin-top:10px">
+        <div class="controls">
+          <button id="btnExpandAll"  class="btn">Expand all</button>
+          <button id="btnCollapseAll" class="btn">Collapse all</button>
+          <label class="compact-toggle"><input id="chkCompact" type="checkbox"> Compact mode</label>
+        </div>
+        <div id="sectionIndex" class="sec-index"></div>
+      </div>
+    </section>
+
+    <section class="card" id="manualRoot">
+      <div class="small">Loading form…</div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <div class="row right">
+        <button id="btnSaveJson" class="btn primary">Save answers (JSON)</button>
+        <button id="btnExportCsv" class="btn">Export evidence list (CSV)</button>
+        <button id="btnExportXlsx" class="btn">Export to Excel (XLSX)</button>
+      </div>
+      <p class="small" style="margin-top:8px">Tip: Use “Save answers (JSON)” to download a local copy you can re-load later. “Export to Excel (XLSX)” fills the Template.xlsx with your answers; ensure the template is present in the assets folder. If export fails, check the template path or try reloading the page.</p>
+    </section>
+  </main>
+
+</body>
+</html>

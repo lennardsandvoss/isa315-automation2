@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ISA315 Assistant – Overview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script type="module" src="assets/Imput/main.js"></script>
+    <script src="assets/Imput/listener.js" defer></script>
+    <script src="assets/Imput/fallback.js" defer></script>
+
+</head>
+<body data-page="overview">
+  <!-- Header (gleicher Block wie auf index) -->
+  <header class="topbar">
+    <div class="header-left">
+      <button id="btnBack" class="header-back">Back</button>
+      <div class="brand">
+        <img src="assets/ey-logo.png" alt="EY" />
+        <a class="logo" href="index.html">ISA315 Assistant</a>
+      </div>
+
+      <nav class="navmenu" aria-label="Quick navigation">
+        <button id="navToggle" class="navbtn" aria-haspopup="true" aria-expanded="false" aria-controls="navPanel">
+          Navigate…
+          <span class="chev" aria-hidden="true"></span>
+        </button>
+        <div id="navPanel" class="navpanel" role="menu" hidden>
+          <a role="menuitem" class="navitem" href="overview.html">Overview</a>
+          <a role="menuitem" class="navitem" href="manuel.html">Manual entry</a>
+          <a role="menuitem" class="navitem" href="contact.html">Contact</a>
+          <a role="menuitem" class="navitem" href="error.html">Report issue</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- kleine Intro-Card -->
+    <section class="card" style="margin-bottom:18px">
+      <h2 style="margin-top:0">Choose your path</h2>
+      <p class="small">Upload an Excel questionnaire for a quick output, or use manual entry for detailed control and evidence.</p>
+    </section>
+
+    <section class="grid two">
+      <!-- LEFT: Excel route -->
+      <div class="card tall">
+        <h3 style="margin-top:0">Excel route</h3>
+        <p class="small">Drop your questionnaire here. We’ll use it to generate the output.</p>
+
+        <!-- Dropzone -->
+        <div id="dropZone" class="dropzone" tabindex="0" aria-label="Upload Excel">
+          <div class="dz-inner">
+            <div class="dz-icon">📄</div>
+            <div class="dz-title">Drop your Excel here</div>
+            <div class="dz-sub">or</div>
+            <label class="btn" for="excelInput" style="margin-top:6px">Browse file</label>
+            <input id="excelInput" type="file" accept=".xlsx,.xlsm,.csv" hidden />
+            <div id="dzFileName" class="dz-file small" aria-live="polite"></div>
+          </div>
+        </div>
+
+        <div class="row right" style="margin-top:14px">
+          <button id="btnExcelUse" class="btn primary" disabled>Use this file</button>
+        </div>
+
+        <p class="hint" id="excelHint">Accepted: .xlsx, .xlsm, .csv</p>
+        <p class="small">Troubleshooting: If the file won’t load, check that your internet connection allows loading the XLSX library. If you run this page directly from your file system, some browsers block local file access—try using a simple local webserver. Make sure your sheet has visible data and a sheet name containing the word “Question”.</p>
+      </div>
+
+      <!-- RIGHT: Manual route -->
+      <div class="card tall">
+        <h3 style="margin-top:0">Manual entry</h3>
+        <p class="small">Enter the information manually, attach screenshots/evidence, and go into more detail where needed.</p>
+        <ul class="bullets">
+          <li>Field-by-field control</li>
+          <li>Evidence (screenshots, docs)</li>
+          <li>Optional translation later</li>
+        </ul>
+
+        <div class="row right" style="margin-top:16px">
+          <a class="btn primary" href="manuel.html">Open manual entry</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>

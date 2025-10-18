@@ -1,0 +1,370 @@
+:root{
+  /* Soft-dark / slate (heller als full dark) */
+  --bg:#1b2230;            /* page background */
+  --panel:#232c3e;         /* cards */
+  --panel-2:#1f2839;       /* header */
+  --panel-3:#2a3450;       /* hero band */
+  --text:#e7eaf0;          /* primary text */
+  --muted:#aab2c2;         /* secondary text */
+  --border:#334055;        /* subtle borders */
+  --accent:#f5c400;        /* EY yellow */
+  --accent-contrast:#111827;
+}
+
+*{box-sizing:border-box}
+html,body{
+  margin:0; padding:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+  color:var(--text);
+  background:linear-gradient(180deg, var(--panel-2), var(--bg));
+}
+
+/* ===== Header ===== */
+.topbar{
+  background:var(--panel-2); color:var(--text);
+  padding:12px 18px; display:flex; align-items:center; gap:14px;
+  border-bottom:1px solid var(--border);
+}
+.header-left{display:flex; align-items:center; gap:14px}
+.brand{display:flex; align-items:center; gap:10px}
+.brand img{height:28px; width:auto; display:block}
+.logo{color:var(--text); text-decoration:none; font-weight:700; letter-spacing:.2px}
+.header-back{
+  background:transparent; color:var(--text);
+  border:1px solid var(--border); padding:6px 10px; border-radius:8px; cursor:pointer;
+}
+.header-back:hover{border-color:#44516a}
+
+/* ===== Layout ===== */
+.container{max-width:1260px; margin:28px auto; padding:0 20px}
+.hero{
+  background:linear-gradient(180deg, var(--panel-3), var(--panel));
+  border:1px solid var(--border); border-radius:16px; padding:22px;
+  display:grid; gap:24px;
+  grid-template-columns: 1.2fr 0.8fr;
+}
+@media (max-width: 980px){
+  .hero{grid-template-columns: 1fr}
+}
+.col{display:flex; flex-direction:column; gap:12px; align-items:flex-start}
+
+.card{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:14px; padding:18px;
+  box-shadow:0 1px 1px rgba(0,0,0,.25)
+}
+.card.tall{min-height:320px}
+
+/* ===== Typography & inputs ===== */
+h1,h2,h3{margin:0 0 10px}
+p{margin:0 0 10px; color:var(--text)}
+.small{font-size:.95rem; color:var(--muted)}
+.label{display:block; margin:6px 0 4px; font-weight:600}
+.input{
+  width:100%; padding:10px 12px; border:1px solid var(--border);
+  border-radius:10px; background:#1b2436; color:var(--text)
+}
+.input::placeholder{color:#8894aa}
+.input.sm{width:auto; padding:6px 8px}
+
+.row{display:flex; align-items:center; gap:10px; margin-top:12px}
+.row.right{justify-content:flex-end}
+.row.center{justify-content:center}
+
+/* ===== Buttons ===== */
+.btn{
+  border:1px solid var(--border); background:#1b2436;
+  color:var(--text); padding:10px 16px; border-radius:10px; cursor:pointer;
+  transition: background .2s ease, border-color .2s ease, transform .02s ease;
+}
+.btn:hover{border-color:#44516a; background:#212b42}
+.btn:active{transform: translateY(1px)}
+.btn.primary{background:var(--accent); color:var(--accent-contrast); border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(0.95)}
+.btn:disabled{opacity:.6; cursor:not-allowed}
+
+/* ===== Data blocks ===== */
+.pre{
+  background:#1b2436; padding:12px; border-radius:10px; border:1px solid var(--border); overflow:auto
+}
+.table{width:100%; border-collapse:collapse; margin-top:10px}
+.table th,.table td{border-bottom:1px solid var(--border); padding:10px; text-align:left; color:var(--text)}
+.bullets{margin:8px 0 0 18px; color:var(--muted)}
+.hint{color:var(--muted); font-size:.92rem; margin-top:6px}
+
+/* ===== Fluid dropdown nav ===== */
+.navmenu{ position:relative; display:flex; align-items:center }
+.navbtn{
+  display:flex; align-items:center; gap:10px;
+  border:1px solid var(--border);
+  background:#1b2436; color:var(--text);
+  padding:8px 12px; border-radius:12px; cursor:pointer;
+  box-shadow:0 1px 0 rgba(0,0,0,.25) inset, 0 0 0 0 rgba(0,0,0,0);
+  transition: border-color .2s ease, box-shadow .2s ease, background .2s ease;
+}
+.navbtn:hover{ border-color:#44516a; background:#212b42 }
+.navbtn[aria-expanded="true"]{ box-shadow:0 0 0 2px rgba(245,196,0,.35) }
+
+.navbtn .chev{
+  width:8px; height:8px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted);
+  transform: rotate(45deg) translateY(-1px); transition: transform .18s ease;
+}
+.navbtn[aria-expanded="true"] .chev{ transform: rotate(-135deg) translateY(1px) }
+
+.navpanel{
+  position:absolute; top:110%; left:0; min-width:220px;
+  background:linear-gradient(180deg, #222c43, #1b2436);
+  border:1px solid var(--border); border-radius:14px;
+  padding:8px; box-shadow:0 12px 30px rgba(0,0,0,.35);
+  backdrop-filter: blur(6px);
+  opacity:0; transform: translateY(-6px) scale(.98);
+  transition: opacity .18s ease, transform .18s ease;
+  z-index:20;
+}
+.navpanel.open{ opacity:1; transform: translateY(0) scale(1) }
+
+.navitem{
+  display:flex; align-items:center; gap:8px;
+  padding:10px 12px; border-radius:10px; color:var(--text); text-decoration:none;
+  transition: background .15s ease, color .15s ease;
+}
+.navitem:hover, .navitem:focus{ outline:none; background:#2a3450 }
+.navitem.active{ background: rgba(245,196,0,.18); color:#fff }
+
+@media (prefers-reduced-motion: reduce){
+  .navpanel{ transition:none }
+  .navbtn .chev{ transition:none }
+}
+
+/* ===== Hero visual placeholder ===== */
+.hero-illus{
+  min-height:200px; border:1px dashed var(--border); border-radius:12px;
+  background:repeating-linear-gradient(135deg, #202a41 0 10px, #222e47 10px 20px);
+  display:flex; align-items:center; justify-content:center; color:#cbd3e4; font-size:.95rem;
+}
+.dropzone{
+  position:relative; border:2px dashed var(--border); border-radius:14px;
+  background:#1b2436; /* leicht dunkler als Card */
+  padding:18px; text-align:center; transition: border-color .2s ease, background .2s ease, transform .02s ease;
+}
+.dropzone:hover{ border-color:#44516a; background:#202b44 }
+.dropzone:focus{ outline:none; box-shadow:0 0 0 2px rgba(245,196,0,.35) }
+.dropzone.is-drag{ border-color:var(--accent); background:#222f4e }
+.dz-inner{ display:flex; flex-direction:column; align-items:center; gap:6px }
+.dz-icon{ font-size:28px; opacity:.9 }
+.dz-title{ font-weight:600 }
+.dz-sub{ color:var(--muted); font-size:.92rem }
+.dz-file{ margin-top:8px; color:var(--muted) }
+
+/* ===== Accordion ===== */
+.accordion{ width:100%; }
+.acc-item{ border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; background:#1b2436; }
+.acc-header{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  width:100%;
+  padding:12px 14px; cursor:pointer;
+  background:transparent; /* full-width bar look, not a button */
+  border-bottom:1px solid var(--border);
+  box-shadow:none;
+}
+.acc-title{ font-weight:700; color:#fff }
+.acc-chev{ width:10px; height:10px; border-right:2px solid #fff; border-bottom:2px solid #fff;
+  transform: rotate(45deg); transition: transform .18s ease; }
+.acc-item.open .acc-chev{ transform: rotate(-135deg) }
+
+.acc-panel{ padding:12px 14px; display:none; }
+.acc-item.open .acc-panel{ display:block; }
+
+/* ===== Questions ===== */
+.q-item{ display:grid; grid-template-columns: 200px 1fr; gap:14px; padding:12px 0; border-top:1px dashed var(--border); }
+.q-item:first-child{ border-top:none; }
+.q-label{ font-weight:600; margin-bottom:6px }
+.q-help{ color:var(--muted); font-size:.9rem; margin-top:4px }
+
+.q-input textarea{ width:100%; min-height:220px; }
+.q-input .yn{ display:flex; gap:10px; margin-top:6px; }
+.yn button{ padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:#1b2436; color:var(--text); cursor:pointer }
+.yn button.active{ background: rgba(245,196,0,.18); border-color: var(--accent) }
+
+/* per-question attachments */
+.q-attach{ background:#1b2436; border:1px dashed var(--border); border-radius:12px; padding:10px; }
+.q-attach .row{ margin-top:6px }
+.q-drop{ position:relative; border:2px dashed var(--border); border-radius:10px; text-align:center; padding:10px; }
+.q-drop:hover{ border-color:#44516a; background:#202b44 }
+.q-drop.is-drag{ border-color:var(--accent); background:#222f4e }
+.q-browse{ display:inline-block; margin-top:6px }
+.q-files{ display:flex; flex-direction:column; gap:6px; margin-top:8px; max-height:160px; overflow:auto }
+.q-file{
+  display:flex; gap:8px; align-items:center; background:#0f172a; border:1px solid var(--border);
+  border-radius:10px; padding:6px 8px;
+}
+.q-thumb{
+  width:40px; height:40px; object-fit:cover; border-radius:6px; border:1px solid var(--border); background:#111a2a; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+}
+.q-fmeta{ flex:1; min-width:0 }
+.q-fname{ font-size:.92rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.q-fnote{ font-size:.8rem; color:var(--muted) }
+.q-remove{ border:1px solid var(--border); background:transparent; color:var(--text); border-radius:8px; padding:6px 8px; cursor:pointer }
+.q-remove:hover{ border-color:#44516a }
+
+/* small screen tweak */
+@media (max-width: 880px){
+  .q-item{ grid-template-columns: 1fr; }
+}
+
+/* badges in accordion headers (progress) */
+.badge{display:inline-block; font-size:.78rem; padding:3px 8px; border:1px solid var(--border);
+  border-radius:999px; color:var(--muted); margin-left:8px; background:#1b2436}
+
+/* controls */
+.controls{display:flex; gap:8px; align-items:center}
+.compact-toggle{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:.92rem}
+
+/* compact mode shrinks textareas and spacing */
+body.compact .q-input textarea{min-height:64px}
+body.compact .q-item{gap:10px; padding:10px 0}
+
+/* tiny section index */
+.sec-index{margin-left:auto; display:flex; gap:6px; flex-wrap:wrap}
+.sec-index a{color:var(--muted); text-decoration:none; border:1px solid var(--border); padding:6px 10px; border-radius:999px}
+.sec-index a:hover{color:var(--text); border-color:#44516a}
+
+/* Freundliches Grün, wenn eine Section komplett ist */
+:root { --ok:#2ea043; }
+.acc-item.complete { border-color: var(--ok) !important; box-shadow: 0 0 0 2px rgba(46,160,67,.25); }
+.acc-item.complete .acc-header { border-bottom-color: rgba(46,160,67,.35); }
+
+/* One-open accordion fühlt sich knackig an – (kein CSS nötig, JS macht's) */
+
+/* Upload-Spalte schmaler */
+.q-item,
+.q-item-outer { width:100%; }
+.q-item { display:grid; grid-template-columns: 200px 1fr; gap:12px; padding:12px 0; border-top:1px dashed var(--border); }
+.q-item:first-child { border-top:none; }
+
+/* Basics ohne Evidence → 1 Spalte */
+.q-item.no-attach { grid-template-columns: 1fr; }
+
+/* Upload-Ecke kleiner & ruhiger */
+.q-attach { background:#1b2436; border:1px dashed var(--border); border-radius:12px; padding:8px; }
+.q-drop   { border:2px dashed var(--border); border-radius:10px; text-align:center; padding:8px; font-size:.9rem; }
+.q-drop:hover{ border-color:#44516a; background:#202b44 }
+.q-drop.is-drag{ border-color:var(--accent); background:#222f4e }
+.q-files  { display:flex; flex-direction:column; gap:6px; margin-top:6px; max-height:140px; overflow:auto }
+.q-file   { background:#0f172a; border:1px solid var(--border); border-radius:10px; padding:6px 8px; display:flex; gap:8px; align-items:center; }
+.q-thumb  { width:36px; height:36px; object-fit:cover; border-radius:6px; border:1px solid var(--border); background:#111a2a; display:flex; align-items:center; justify-content:center; }
+
+/* Inputs – thematische leichte Tönung je Section (gut sichtbar, aber dezent) */
+.acc-item[data-sec="it_overview"]    .q-input .input,
+.acc-item[data-sec="it_overview"]    .q-input textarea { background:#1e2740; }
+
+.acc-item[data-sec="app_profile"]    .q-input .input,
+.acc-item[data-sec="app_profile"]    .q-input textarea { background:#1e2f36; }
+
+.acc-item[data-sec="vendor_change"]  .q-input .input,
+.acc-item[data-sec="vendor_change"]  .q-input textarea { background:#214d33; }
+
+.acc-item[data-sec="entity_change"]  .q-input .input,
+.acc-item[data-sec="entity_change"]  .q-input textarea { background:#1f2e42; }
+
+.acc-item[data-sec="security_settings"] .q-input .input,
+.acc-item[data-sec="security_settings"] .q-input textarea { background:#232c3e; }
+
+.acc-item[data-sec="user_access"]    .q-input .input,
+.acc-item[data-sec="user_access"]    .q-input textarea { background:#1d2a3c; }
+
+.acc-item[data-sec="job_scheduling"] .q-input .input,
+.acc-item[data-sec="job_scheduling"] .q-input textarea { background:#203047; }
+
+/* ==== Compact visual tweaks & better contrast ==== */
+
+/* etwas hellere Schrift auf dunklem Grund */
+:root{
+  --text:#f3f4f6;      /* heller */
+  --muted:#c7cfdd;     /* heller */
+}
+
+/* Cards/Container enger */
+.container{ max-width:1100px; margin:22px auto; padding:0 16px }
+.card{ padding:14px; border-radius:12px }
+
+/* Accordion header kompakter */
+.acc-header{ padding:10px 12px }
+.acc-title{ font-size:1.1rem; font-weight:700; letter-spacing:.2px }
+
+/* Fragezeilen enger, Upload-Spalte kleiner */
+.q-item{
+  grid-template-columns: 200px 1fr;
+  gap:10px;
+  padding:8px 0;
+}
+.q-item:first-child{ padding-top:0 }
+
+/* Basics ohne Evidence = 1 Spalte bleibt */
+.q-item.no-attach{ grid-template-columns:1fr }
+
+/* Inputs kleiner + klarer Kontrast */
+.q-label{ margin-bottom:4px; font-size:.95rem }
+.q-input .input,
+.q-input textarea{
+  background:#1a2234;         /* neutraler, klarer */
+  color:var(--text);           /* helle Schrift */
+  font-size:.95rem;
+  padding:8px 10px;
+  border-radius:8px;
+  border:1px solid var(--border);
+  line-height:1.35;
+}
+.q-input .input::placeholder,
+.q-input textarea::placeholder{ color:#aab6c7 }
+
+/* thematische Tönung – etwas heller, aber Text bleibt klar */
+.acc-item[data-sec="it_overview"]    .q-input .input,
+.acc-item[data-sec="it_overview"]    .q-input textarea{ background:#202a44 }
+
+.acc-item[data-sec="app_profile"]    .q-input .input,
+.acc-item[data-sec="app_profile"]    .q-input textarea{ background:#20313a }
+
+.acc-item[data-sec="vendor_change"]  .q-input .input,
+.acc-item[data-sec="vendor_change"]  .q-input textarea{ background:#214d33 }
+
+.acc-item[data-sec="entity_change"]  .q-input .input,
+.acc-item[data-sec="entity_change"]  .q-input textarea{ background:#213149 }
+
+.acc-item[data-sec="security_settings"] .q-input .input,
+.acc-item[data-sec="security_settings"] .q-input textarea{ background:#253145 }
+
+.acc-item[data-sec="user_access"]    .q-input .input,
+.acc-item[data-sec="user_access"]    .q-input textarea{ background:#1f2d41 }
+
+.acc-item[data-sec="job_scheduling"] .q-input .input,
+.acc-item[data-sec="job_scheduling"] .q-input textarea{ background:#223553 }
+
+/* Textarea: klein starten, bei Bedarf wachsen (JS setzt Höhe) */
+.q-input textarea{
+  min-height:220px;
+  max-height:600px;    /* etwas mehr Spielraum */
+  overflow:auto;       /* natürliche Scrollbar bei sehr langem Text */
+  resize:vertical;     /* darf der Nutzer bei Bedarf ziehen */
+}
+
+/* Uploads noch kompakter */
+.q-attach{ padding:8px }
+.q-drop{ padding:6px; font-size:.9rem }
+.q-files{ gap:6px; max-height:120px }
+.q-file{ padding:6px 8px }
+.q-thumb{ width:28px; height:28px; border-radius:6px }
+
+/* „Fertig“-Grün bleibt */
+:root{ --ok:#2ea043 }
+.acc-item.complete{ border-color:var(--ok)!important; box-shadow:0 0 0 2px rgba(46,160,67,.25) }
+.acc-item.complete .acc-header{ border-bottom-color:rgba(46,160,67,.35) }
+
+
+/* Unified textfield background to Category 2 (app_profile) */
+.accordion .q-input .input,
+.accordion .q-input textarea{
+  background:#20313a !important;
+}

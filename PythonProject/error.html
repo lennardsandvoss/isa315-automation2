@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ISA315 Assistant – Report issue</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+    <script type="module" src="assets/Imput/main.js"></script>
+    <script src="assets/Imput/listener.js" defer></script>
+    <script src="assets/Imput/fallback.js" defer></script>
+</head>
+<body data-page="error">
+  <header class="topbar">
+  <div class="header-left">
+    <button id="btnBack" class="header-back">Back</button>
+    <div class="brand">
+      <img src="assets/ey-logo.png" alt="EY" />
+      <a class="logo" href="index.html">ISA315 Assistant</a>
+    </div>
+    <nav class="navmenu" aria-label="Quick navigation">
+        <button id="navToggle" class="navbtn" aria-haspopup="true" aria-expanded="false" aria-controls="navPanel">
+          Navigate…
+          <span class="chev" aria-hidden="true"></span>
+        </button>
+        <div id="navPanel" class="navpanel" role="menu" hidden>
+          <a role="menuitem" class="navitem" href="overview.html">Overview</a>
+          <a role="menuitem" class="navitem" href="manuel.html">Manual entry</a>
+          <a role="menuitem" class="navitem" href="contact.html">Contact</a>
+          <a role="menuitem" class="navitem" href="error.html">Report issue</a>
+        </div>
+      </nav>
+  </div>
+</header>
+
+  <main class="container narrow">
+    <section class="card">
+      <h2>Report an issue</h2>
+      <p>Describe what happened so we can help.</p>
+
+      <label class="label" for="errSummary">Summary</label>
+      <input class="input" id="errSummary" type="text" placeholder="Short title" />
+
+      <label class="label" for="errDetails">Details</label>
+      <textarea class="input" id="errDetails" rows="5" placeholder="Steps, expected vs actual"></textarea>
+
+      <div class="row right">
+        <button id="btnSendIssue" class="btn primary">Send</button>
+      </div>
+
+      <p class="hint" id="errHint">This will later submit to SharePoint or send an email via Outlook add-in.</p>
+    </section>
+  </main>
+
+</body>
+</html>

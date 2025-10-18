@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ISA315 Assistant – Welcome</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="style.css" />
+    <script type="module" src="assets/Imput/main.js"></script>
+    <script src="assets/Imput/listener.js" defer></script>
+    <script src="assets/Imput/fallback.js" defer></script>
+</head>
+<body data-page="index">
+  <!-- Header -->
+  <header class="topbar">
+    <div class="header-left">
+      <button id="btnBack" class="header-back" style="display:none">Back</button>
+
+      <div class="brand">
+        <img src="assets/ey-logo.png" alt="EY" />
+        <a class="logo" href="index.html">ISA315 Assistant</a>
+      </div>
+
+      <!-- dropdown nav -->
+      <nav class="navmenu" aria-label="Quick navigation">
+        <button id="navToggle" class="navbtn" aria-haspopup="true" aria-expanded="false" aria-controls="navPanel">
+          Navigate…
+          <span class="chev" aria-hidden="true"></span>
+        </button>
+        <div id="navPanel" class="navpanel" role="menu" hidden>
+          <a role="menuitem" class="navitem" href="overview.html">Overview</a>
+          <a role="menuitem" class="navitem" href="manuel.html">Manual entry</a>
+          <a role="menuitem" class="navitem" href="contact.html">Contact</a>
+          <a role="menuitem" class="navitem" href="error.html">Report issue</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="container">
+    <section class="hero">
+      <div class="col">
+        <h1>Welcome to your ISA 315 assistant</h1>
+        <p class="small">
+          Build audit outputs from either an <strong>uploaded Excel questionnaire</strong> or via
+          <strong>manual entry with evidence</strong>. Runs in SharePoint, no external storage.
+        </p>
+        <ul class="bullets">
+          <li><strong>Excel route</strong> — quick generation from the client questionnaire</li>
+          <li><strong>Manual route</strong> — fine control, screenshots & notes per field</li>
+          <li><strong>Future</strong> — translation & SharePoint write-back</li>
+        </ul>
+
+        <div class="row" style="margin-top:14px">
+          <a id="btnGetStarted" class="btn primary" href="overview.html">Get started</a>
+        </div>
+      </div>
+
+      <div class="hero-illus">
+        (Visual area — process diagram or brand image)
+      </div>
+    </section>
+  </main>
+
+</body>
+</html>
