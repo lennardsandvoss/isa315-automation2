@@ -63,6 +63,18 @@ export function renderAccordion(schema, prefill={}){
     const list  = rootEl.querySelector('.q-files');
     if(!drop || !input || !list) return;
 
+    const maxFiles = (()=>{
+      try{
+        const cfg = window.ISA315_EVIDENCE_LAYOUT;
+        if (cfg && typeof cfg.maxFilesPerSection === 'number' && cfg.maxFilesPerSection > 0){
+          return Math.min(50, Math.max(1, cfg.maxFilesPerSection));
+        }
+      }catch(_){ }
+      return 10;
+    })();
+
+    let currentFiles = [];
+
     const renderFiles = (files) => {
       list.innerHTML = '';
       Array.from(files).forEach(f => {
@@ -86,12 +98,32 @@ export function renderAccordion(schema, prefill={}){
         row.appendChild(thumb); row.appendChild(meta);
         list.appendChild(row);
       });
+      if (files.length >= maxFiles){
+        const info = document.createElement('div');
+        info.className = 'q-fnote limit';
+        info.textContent = `Showing first ${maxFiles} files. Remove one to add more.`;
+        list.appendChild(info);
+      }
     };
 
     const setFiles = (files) => {
-      // store on element for later retrieval if needed
-      rootEl.__evidenceFiles = files;
-      renderFiles(files);
+      currentFiles = Array.from(files).slice(0, maxFiles);
+      rootEl.__evidenceFiles = currentFiles;
+      renderFiles(currentFiles);
+    };
+
+    const appendFiles = (files) => {
+      if(!files || !files.length) return;
+      const merged = currentFiles.slice();
+      Array.from(files).forEach(file => {
+        const duplicate = merged.some(existing => (
+          existing.name === file.name &&
+          existing.size === file.size &&
+          existing.lastModified === file.lastModified
+        ));
+        if (!duplicate) merged.push(file);
+      });
+      setFiles(merged);
     };
 
     ;['dragenter','dragover'].forEach(evt=>{
@@ -102,10 +134,11 @@ export function renderAccordion(schema, prefill={}){
     });
     drop.addEventListener('drop', e=>{
       const f = e.dataTransfer?.files; if(!f || !f.length) return;
-      setFiles(f);
+      appendFiles(f);
     });
     input.addEventListener('change', e=>{
-      if(e.target.files && e.target.files.length){ setFiles(e.target.files); }
+      if(e.target.files && e.target.files.length){ appendFiles(e.target.files); }
+      e.target.value = '';
     });
   };
 
