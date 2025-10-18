@@ -579,6 +579,208 @@
     root.appendChild(wrap);
   }
 
+  // Evidence export helpers for legacy fallback export
+  var LEGACY_EVIDENCE_EXPORT_CONFIG = {
+    maxFilesPerSection: 10,
+    defaultSheet: 'Evidence',
+    defaultStartCell: 'B2',
+    defaultImageSize: { width: 320, height: 180 },
+    defaultRowStride: 18,
+    linkColumnOffset: 2,
+    sections: {
+      // Example override:
+      // 'IT Environment Overview': { sheet:'Evidence', startCell:'B2', imageSize:{ width:300, height:170 }, rowStride:18, linkColumnOffset:2 }
+    }
+  };
+
+  function legacySanitizeSegment(input){
+    return String(input||'')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'section';
+  }
+
+  function legacySanitizeFileName(name, fallbackExt){
+    var cleaned = String(name||'').trim().replace(/[^a-z0-9_.-]+/gi, '_') || 'file';
+    if (/\.[a-z0-9]+$/i.test(cleaned)) return cleaned;
+    return fallbackExt ? cleaned + '.' + fallbackExt : cleaned;
+  }
+
+  function legacyNumberToColumn(num){
+    var col = '';
+    var n = Math.max(1, Math.floor(num||1));
+    while (n > 0){
+      var rem = (n - 1) % 26;
+      col = String.fromCharCode(65 + rem) + col;
+      n = Math.floor((n - 1) / 26);
+    }
+    return col || 'A';
+  }
+
+  function legacyColumnToNumber(col){
+    return String(col||'').toUpperCase().split('').reduce(function(sum, ch){ return sum * 26 + (ch.charCodeAt(0) - 64); }, 0);
+  }
+
+  function legacyParseCellAddress(addr){
+    var match = /^([A-Z]+)(\d+)$/i.exec(String(addr||'').trim());
+    if (!match) return { col: 1, row: 1 };
+    return { col: legacyColumnToNumber(match[1]), row: parseInt(match[2], 10) || 1 };
+  }
+
+  function legacyArrayBufferToBase64(buffer){
+    var binary = '';
+    var bytes = new Uint8Array(buffer);
+    for (var i=0; i<bytes.byteLength; i++){ binary += String.fromCharCode(bytes[i]); }
+    return btoa(binary);
+  }
+
+  function legacyCollectEvidenceSections(){
+    var sections = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.accordion .acc-item'), function(item){
+      var secId = item.getAttribute('data-sec') || '';
+      if (!secId || secId === 'project_basics') return;
+      var attach = item.querySelector('.q-attach');
+      var files = attach && attach.__evidenceFiles ? Array.prototype.slice.call(attach.__evidenceFiles, 0, LEGACY_EVIDENCE_EXPORT_CONFIG.maxFilesPerSection) : [];
+      if (!files.length) return;
+      var titleEl = item.querySelector('.acc-title');
+      var title = titleEl ? titleEl.textContent : secId;
+      sections.push({ id: secId, title: title, files: files });
+    });
+    return sections;
+  }
+
+  async function legacyPrepareEvidencePayload(sections){
+    var prepared = [];
+    for (var i=0; i<sections.length; i++){
+      var section = sections[i];
+      var items = [];
+      for (var j=0; j<section.files.length && j<LEGACY_EVIDENCE_EXPORT_CONFIG.maxFilesPerSection; j++){
+        var file = section.files[j];
+        if (!file) continue;
+        var buffer = await file.arrayBuffer();
+        var type = file.type || '';
+        var extGuess = type.indexOf('image/')===0 ? (type.split('/')[1] || '').toLowerCase() : ((file.name || '').split('.').pop() || '').toLowerCase();
+        var normalizedExt = extGuess === 'jpg' ? 'jpeg' : extGuess;
+        var finalName = legacySanitizeFileName(file.name, normalizedExt || (type === 'application/pdf' ? 'pdf' : ''));
+        var sectionFolder = legacySanitizeSegment(section.id || 'section');
+        var relPath = 'evidence/' + sectionFolder + '/' + finalName;
+        var entry = {
+          file: file,
+          buffer: buffer,
+          type: type,
+          extension: normalizedExt,
+          finalName: finalName,
+          relativePath: relPath,
+          sectionId: section.id,
+          sectionTitle: section.title,
+          isImage: type.indexOf('image/')===0,
+          name: file.name || finalName,
+          sectionFolder: sectionFolder
+        };
+        if (entry.isImage){ entry.base64 = legacyArrayBufferToBase64(buffer); }
+        items.push(entry);
+      }
+      if (items.length){ prepared.push({ sectionId: section.id, sectionTitle: section.title, items: items }); }
+    }
+    return prepared;
+  }
+
+  function legacyApplyEvidenceToWorkbook(workbook, evidence, config){
+    config = config || LEGACY_EVIDENCE_EXPORT_CONFIG;
+    if (!evidence || !evidence.length) return;
+    var canUseMap = typeof Map !== 'undefined';
+    var sheetCache = canUseMap ? new Map() : {};
+    var defaults = {
+      sheet: config.defaultSheet,
+      startCell: config.defaultStartCell,
+      imageSize: config.defaultImageSize,
+      rowStride: config.defaultRowStride,
+      linkColumnOffset: config.linkColumnOffset
+    };
+    var defaultAnchor = legacyParseCellAddress(config.defaultStartCell || 'B2');
+    var nextDefaultRow = defaultAnchor.row;
+
+    function getSheet(name){
+      if (canUseMap){
+        if (sheetCache.has(name)) return sheetCache.get(name);
+      } else if (sheetCache[name]){
+        return sheetCache[name];
+      }
+      var ws = workbook.getWorksheet(name);
+      if (!ws) ws = workbook.addWorksheet(name);
+      if (canUseMap) sheetCache.set(name, ws); else sheetCache[name] = ws;
+      return ws;
+    }
+
+    function getSettings(sectionId){
+      var override = (config.sections && config.sections[sectionId]) || {};
+      var settings = {
+        sheet: override.sheet || defaults.sheet,
+        startCell: override.startCell || defaults.startCell,
+        imageSize: override.imageSize || defaults.imageSize,
+        rowStride: typeof override.rowStride === 'number' ? override.rowStride : defaults.rowStride,
+        linkColumnOffset: typeof override.linkColumnOffset === 'number' ? override.linkColumnOffset : defaults.linkColumnOffset
+      };
+      if (!override.startCell){
+        settings.startCell = legacyNumberToColumn(defaultAnchor.col) + nextDefaultRow;
+      }
+      return settings;
+    }
+
+    function toZeroAnchor(addr){
+      var parsed = legacyParseCellAddress(addr || 'A1');
+      return { col: Math.max(parsed.col - 1, 0), row: Math.max(parsed.row - 1, 0) };
+    }
+
+    for (var i=0; i<evidence.length; i++){
+      var section = evidence[i];
+      var settings = getSettings(section.sectionId);
+      var ws = getSheet(settings.sheet);
+      var start = legacyParseCellAddress(settings.startCell);
+      var headerCell = ws.getCell(start.row, start.col);
+      headerCell.value = 'Section: ' + section.sectionTitle;
+      headerCell.font = { bold: true };
+      var stride = settings.rowStride || defaults.rowStride || 18;
+      var hasCustomStart = !!(config.sections && config.sections[section.sectionId] && config.sections[section.sectionId].startCell);
+
+      for (var j=0; j<section.items.length; j++){
+        var item = section.items[j];
+        var rowOffset = stride * j;
+        var baseRow = start.row + 1 + rowOffset;
+        var baseCol = start.col;
+        var previewAnchor = toZeroAnchor(legacyNumberToColumn(baseCol) + baseRow);
+        var size = settings.imageSize || defaults.imageSize;
+        var linkOffset = typeof settings.linkColumnOffset === 'number' ? Math.max(0, settings.linkColumnOffset) : 0;
+        var linkCol = Math.max(1, baseCol + linkOffset);
+        var linkCell = ws.getCell(baseRow, linkCol);
+        linkCell.value = { text: item.name, hyperlink: item.relativePath };
+        linkCell.font = { color: { argb: 'FF1F4E79' }, underline: true };
+        linkCell.note = item.type || '';
+
+        if (item.isImage && item.base64){
+          var imageId = workbook.addImage({ base64: item.base64, extension: item.extension || 'png' });
+          ws.addImage(imageId, {
+            tl: { col: previewAnchor.col, row: previewAnchor.row },
+            ext: { width: (size && size.width) || 320, height: (size && size.height) || 180 }
+          });
+          var rowsCovered = Math.ceil(((size && size.height) || 180) / 20);
+          for (var r=0; r<rowsCovered; r++){
+            var excelRow = ws.getRow(baseRow + r);
+            if (!excelRow.height || excelRow.height < 60) excelRow.height = 60;
+          }
+        } else {
+          var noteCell = ws.getCell(baseRow, baseCol);
+          noteCell.value = 'Preview not available';
+          noteCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
+        }
+      }
+
+      if (!hasCustomStart){
+        nextDefaultRow = start.row + 1 + stride * Math.max(section.items.length, 1) + 4;
+      }
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function(){
     try{
       wireHeaderFallback();
@@ -648,14 +850,20 @@
                 alert('ExcelJS library not loaded. Please check your internet connection.');
                 return;
               }
+              if (typeof JSZip === 'undefined'){
+                alert('JSZip library not loaded. Please check your internet connection.');
+                return;
+              }
               // Collect current answers from the manual form
               var answers = {};
               Array.prototype.forEach.call(document.querySelectorAll('.acc-panel input, .acc-panel textarea, .acc-panel select'), function(el){ if(el.id) answers[el.id] = el.value; });
+              var evidenceSections = legacyCollectEvidenceSections();
+              var preparedEvidence = await legacyPrepareEvidencePayload(evidenceSections);
 
               // Build sequential Question-N map (including first section)
               var idsInOrder = [];
               try{
-                (window.FORM_SCHEMA||[]).forEach(function(s){ (s.questions||[]).forEach(function(q){ idsInOrder.push(q.id); }); });
+                (window.FORM_SCHEMA||[]).forEach(function(s){ (s.questions||[]).forEach(function(q){ idsInOrder.push(q.id); });});
               }catch(_){ }
               var numToId = new Map(); // 1-based
               idsInOrder.forEach(function(id, idx){ numToId.set(idx+1, id); });
@@ -678,19 +886,16 @@
                     abs.push(new URL('./assets/Output/Template.xlsx', location.href).href);
                   }catch(_){ }
                   var all = rel.concat(abs);
-                  // de-dup
                   return Array.from(new Set(all));
                 }
                 var candidates = buildCandidates();
-                // Try fetch first
                 for (var i=0;i<candidates.length;i++){
                   var url = candidates[i];
                   try{
                     var resp = await fetch(url, { cache: 'no-cache' });
                     if(resp && resp.ok){ return await resp.arrayBuffer(); }
-                  }catch(e){ /* try next */ }
+                  }catch(e){ }
                 }
-                // Fallback: try XMLHttpRequest (helps in some file:// contexts)
                 function tryXhr(url){
                   return new Promise(function(resolve, reject){
                     try{
@@ -714,9 +919,8 @@
                   try{
                     var buf = await tryXhr(url2);
                     if (buf) return buf;
-                  }catch(e){ /* continue */ }
+                  }catch(e){ }
                 }
-                // Final fallback for file:// contexts: prompt user to pick the template file locally
                 if (location.protocol === 'file:'){
                   try{
                     var picked = await new Promise(function(resolve, reject){
@@ -736,10 +940,10 @@
                       setTimeout(function(){ try{ inp.remove(); }catch(_){ } reject(new Error('picker canceled')); }, 30000);
                     });
                     if (picked) return picked;
-                  }catch(_){ /* ignore and fall through */ }
+                  }catch(_){ }
                 }
                 console.error('[ISA315][Legacy] Default template not found via any path or method. Tried:', candidates);
-                if (window.showError) { window.showError({ title:'Default template not found', message:'We could not locate assets/Template.xlsx using any known path.', hint:'Make sure the Template.xlsx file exists in the assets folder or pick it manually when prompted. If running via file://, try a local webserver.', code:'EXP-TPL-404' }); } else { alert('Default template not found: assets/Template.xlsx'); }
+                if (window.showError) { window.showError({ title:'Default template not found', message:'We could not locate assets/Output/Template.xlsx using any known path.', hint:'Make sure the Template.xlsx file exists in the assets folder or pick it manually when prompted. If running via file://, try a local webserver.', code:'EXP-TPL-404' }); } else { alert('Default template not found: assets/Output/Template.xlsx'); }
                 throw new Error('Default template missing');
               }
               var buf = await loadTemplateBuffer();
@@ -776,12 +980,32 @@
                 });
               });
 
-              // Download filled workbook
+              // Embed evidence previews and hyperlinks
+              legacyApplyEvidenceToWorkbook(wb, preparedEvidence, LEGACY_EVIDENCE_EXPORT_CONFIG);
+
+              // Package Excel + evidence files into ZIP
               var outBuf = await wb.xlsx.writeBuffer();
-              var blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-              var url = URL.createObjectURL(blob);
+              var zip = new JSZip();
+              var dateTag = new Date().toISOString().slice(0,10);
+              var excelName = 'isa315_filled_' + dateTag + '.xlsx';
+              zip.file(excelName, outBuf);
+              if (preparedEvidence.length){
+                var evidenceRoot = zip.folder('evidence');
+                preparedEvidence.forEach(function(section){
+                  if (!section.items || !section.items.length) return;
+                  var secFolderName = section.items[0] && section.items[0].sectionFolder ? section.items[0].sectionFolder : legacySanitizeSegment(section.sectionId);
+                  var secFolder = evidenceRoot.folder(secFolderName);
+                  section.items.forEach(function(item){
+                    if (!item || !item.buffer) return;
+                    secFolder.file(item.finalName, item.buffer);
+                  });
+                });
+              }
+
+              var zipBlob = await zip.generateAsync({ type: 'blob' });
+              var url = URL.createObjectURL(zipBlob);
               var a = document.createElement('a');
-              a.href = url; a.download = 'isa315_filled_'+(new Date().toISOString().slice(0,10))+'.xlsx'; a.rel = 'noopener';
+              a.href = url; a.download = 'isa315_export_' + dateTag + '.zip'; a.rel = 'noopener';
               document.body.appendChild(a); a.click(); a.remove();
               setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
             }catch(err){
@@ -789,6 +1013,7 @@
               if (window.showError) { window.showError({ title:'Excel export failed', message:'We could not generate the Excel file.', hint:'Verify Template.xlsx exists and is accessible. If running locally, try via a local webserver. Then try exporting again.', code:'EXP-WRITE-001', cause: (typeof err!=='undefined'?err:undefined) }); } else { alert('Excel export failed. Please check the template and try again.'); }
             }
           });
+
         });
       } else if (page === 'overview') {
         // Legacy overview: wire Excel upload and parse → savePrefill → redirect
