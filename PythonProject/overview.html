@@ -80,9 +80,13 @@
           <li>Optional translation later</li>
         </ul>
 
-        <div class="row right" style="margin-top:16px">
+        <div class="row right" style="margin-top:16px; gap:8px; flex-wrap:wrap">
           <a class="btn primary" href="manuel.html">Open manual entry</a>
+          <label class="btn" for="manualJsonInput">Load answers (JSON)</label>
+          <input id="manualJsonInput" type="file" accept="application/json,.json" hidden />
         </div>
+        <p class="small" id="manualJsonHint">Restore a session by selecting the JSON file exported from manual entry.</p>
+        <p class="small" id="manualJsonStatus" aria-live="polite"></p>
       </div>
     </section>
   </main>
