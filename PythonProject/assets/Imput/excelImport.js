@@ -1,4 +1,4 @@
-import { FORM_SCHEMA } from './formschema.js';
+import { FORM_SCHEMA, FORM_QUESTION_INDEX } from '../formschema.js';
 import { savePrefill } from './storage.js';
 import { $, $$ } from '../Output/uiHelpers.js';
 
@@ -8,12 +8,186 @@ export function onOverview() {
   const fileLbl = $('#dzFileName');
   const useBtn  = $('#btnExcelUse');
   const hint    = $('#excelHint');
+  const jsonInput  = $('#manualJsonInput');
+  const jsonHint   = $('#manualJsonHint');
+  const jsonStatus = $('#manualJsonStatus');
+  const jsonHintDefault = jsonHint?.textContent || '';
+
+  const sanitizeKey = (value, fallback = '') => {
+    const base = (value == null ? '' : String(value)).trim();
+    const safe = base
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+    return safe || (fallback ? String(fallback) : 'item');
+  };
+
+  const questionIndex = (() => {
+    if (Array.isArray(FORM_QUESTION_INDEX) && FORM_QUESTION_INDEX.length) {
+      return FORM_QUESTION_INDEX.map((entry, idx) => ({
+        id: entry.id,
+        legacyId: entry.legacyId || entry.id,
+        slug: entry.slug || sanitizeKey(entry.id, `q_${idx + 1}`),
+        label: entry.label || entry.id,
+        index: idx,
+      }));
+    }
+    const flat = [];
+    FORM_SCHEMA.forEach((section) => {
+      (section.questions || []).forEach((question) => {
+        flat.push({
+          id: question.id,
+          legacyId: question.legacyId || question.id,
+          slug: question.slug || sanitizeKey(question.id, `q_${flat.length + 1}`),
+          label: question.label || question.id,
+          index: flat.length,
+        });
+      });
+    });
+    return flat;
+  })();
+
+  const unwrapValue = (value) => {
+    if (value == null) return value;
+    if (typeof value === 'object') {
+      if (Object.prototype.hasOwnProperty.call(value, 'answer')) return value.answer;
+      if (Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
+    }
+    return value;
+  };
+
+  const normaliseJsonAnswers = (raw) => {
+    if (!raw) return {};
+
+    if (Array.isArray(raw)) {
+      const seqOut = {};
+      raw.forEach((value, idx) => {
+        if (idx >= questionIndex.length) return;
+        seqOut[questionIndex[idx].id] = unwrapValue(value);
+      });
+      return seqOut;
+    }
+
+    const isPlainObject = Object.prototype.toString.call(raw) === '[object Object]';
+    if (!isPlainObject) return {};
+
+    const directMatches = {};
+    let matched = 0;
+    const lowerMap = new Map();
+    Object.keys(raw).forEach((key) => {
+      lowerMap.set(String(key).trim().toLowerCase(), raw[key]);
+    });
+
+    questionIndex.forEach((entry) => {
+      const candidates = [
+        entry.id,
+        entry.legacyId,
+        entry.slug,
+        entry.label,
+      ];
+      for (const key of candidates) {
+        if (!key) continue;
+        if (Object.prototype.hasOwnProperty.call(raw, key)) {
+          directMatches[entry.id] = unwrapValue(raw[key]);
+          matched++;
+          return;
+        }
+        const lowered = String(key).trim().toLowerCase();
+        if (lowerMap.has(lowered)) {
+          directMatches[entry.id] = unwrapValue(lowerMap.get(lowered));
+          matched++;
+          return;
+        }
+      }
+    });
+
+    if (matched > 0) {
+      return directMatches;
+    }
+
+    const seq = Array.isArray(raw.answers)
+      ? Array.from(raw.answers)
+      : (Object.prototype.toString.call(raw.answers) === '[object Object]' ? Object.values(raw.answers) : Object.values(raw));
+
+    const output = {};
+    seq.forEach((value, idx) => {
+      if (idx >= questionIndex.length) return;
+      output[questionIndex[idx].id] = unwrapValue(value);
+    });
+    return output;
+  };
 
   if(!dz || !input || !useBtn) return;
 
   let selectedFile = null;
 
+  const isJsonFile = (file) => {
+    if (!file) return false;
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.json')) return true;
+    const type = (file.type || '').toLowerCase();
+    return type === 'application/json' || type === 'text/json';
+  };
+
+  const isSpreadsheetFile = (file) => {
+    if (!file) return false;
+    const name = (file.name || '').toLowerCase();
+    if (/\.(xlsx|xlsm|csv)$/i.test(name)) return true;
+    const type = (file.type || '').toLowerCase();
+    return type.includes('spreadsheet') || type === 'text/csv';
+  };
+
+  const setJsonStatus = (message='', type='info') => {
+    if (!jsonStatus) return;
+    jsonStatus.textContent = message;
+    if (jsonStatus.style){
+      if (type === 'error') jsonStatus.style.color = '#d9534f';
+      else if (type === 'success') jsonStatus.style.color = '#3fa34d';
+      else jsonStatus.style.color = '';
+    }
+  };
+
+  const processJsonPrefill = async (file, origin='dropzone') => {
+    try{
+      if (!file) return;
+      setJsonStatus('Loading JSON answers…', 'info');
+      if (jsonHint){ jsonHint.textContent = 'Importing answers into manual entry…'; }
+      const text = await file.text();
+      const raw = JSON.parse(text);
+      const answers = normaliseJsonAnswers(raw);
+      if (!answers || typeof answers !== 'object' || !Object.keys(answers).length) {
+        throw new Error('No answers found in JSON file');
+      }
+      savePrefill(answers);
+      const count = Object.keys(answers).length;
+      if (jsonHint){ jsonHint.textContent = 'JSON loaded. Opening manual entry…'; }
+      setJsonStatus(`Loaded ${count} answers. Redirecting to manual entry…`, 'success');
+      setTimeout(()=>{ location.href = 'manuel.html' + location.hash; }, origin === 'button' ? 250 : 400);
+    }catch(err){
+      console.error('[ISA315][JSONImport] Failed to load JSON', err);
+      setJsonStatus('Could not load the JSON file. Ensure it was exported from manual entry.', 'error');
+      if (jsonHint){ jsonHint.textContent = jsonHintDefault || 'Restore a session by selecting the JSON file exported from manual entry.'; }
+    }finally{
+      if (jsonInput) jsonInput.value = '';
+      setFile(null);
+    }
+  };
+
   const setFile = (file) => {
+    selectedFile = null;
+    if (file && isJsonFile(file)) {
+      fileLbl.textContent = `Selected: ${file.name}`;
+      useBtn.disabled = true;
+      hint.textContent = 'Processing JSON answers…';
+      processJsonPrefill(file, 'dropzone');
+      return;
+    }
+    if (file && !isSpreadsheetFile(file)) {
+      hint.textContent = 'Use .xlsx, .xlsm, .csv, or .json';
+      fileLbl.textContent = '';
+      useBtn.disabled = true;
+      return;
+    }
     selectedFile = file || null;
     if(selectedFile){
       fileLbl.textContent = `Selected: ${selectedFile.name}`;
@@ -22,7 +196,7 @@ export function onOverview() {
     }else{
       fileLbl.textContent = '';
       useBtn.disabled = true;
-      hint.textContent = 'Accepted: .xlsx, .xlsm, .csv';
+      hint.textContent = 'Accepted: .xlsx, .xlsm, .csv, .json';
     }
   };
 
@@ -37,14 +211,30 @@ export function onOverview() {
   dz.addEventListener('drop', (e)=>{
     const f = e.dataTransfer?.files?.[0];
     if(!f) return;
-    const ok = /\.(xlsx|xlsm|csv)$/i.test(f.name);
-    if(!ok){ hint.textContent = 'Use .xlsx, .xlsm or .csv'; return; }
+    if (!isSpreadsheetFile(f) && !isJsonFile(f)) {
+      hint.textContent = 'Use .xlsx, .xlsm, .csv, or .json';
+      return;
+    }
     setFile(f);
   });
   dz.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); input.click(); } });
 
+  jsonInput?.addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processJsonPrefill(file, 'button');
+  });
+
   useBtn.addEventListener('click', async ()=>{
-    if(!selectedFile) return alert('Please select a file.');
+    if(!selectedFile){
+      alert('Please select a file.');
+      return;
+    }
+
+    if (isJsonFile(selectedFile)) {
+      await processJsonPrefill(selectedFile, 'button');
+      return;
+    }
 
     try{
       if (typeof XLSX === 'undefined') {
