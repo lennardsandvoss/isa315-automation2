@@ -2,38 +2,18 @@ import { FORM_SCHEMA } from './formschema.js';
 import { loadPrefill } from '../Imput/storage.js';
 import { renderAccordion, $$, download } from './uiHelpers.js';
 
-const DEFAULT_EVIDENCE_LAYOUT = {
+// Evidence export configuration – adjust to control placement and sizing in the template
+const EVIDENCE_EXPORT_CONFIG = {
   maxFilesPerSection: 10,
-  defaults: {
-    sheet: 'Evidence',
-    startCell: 'B2',
-    rowStride: 18,
-    imageSize: { width: 320, height: 180 },
-    linkCellOffset: { columns: 2, rows: 0 },
-    header: { enabled: true, textPrefix: 'Section: ', sheet: null },
+  defaultSheet: 'Evidence',
+  defaultStartCell: 'B2',
+  defaultImageSize: { width: 320, height: 180 },
+  defaultRowStride: 18,
+  linkColumnOffset: 2,
+  sections: {
+    // Example:
+    // 'IT Environment Overview': { sheet: 'Evidence', startCell: 'B2', imageSize: { width: 300, height: 170 }, rowStride: 18, linkColumnOffset: 2 },
   },
-  sections: {},
-};
-
-const readEvidenceLayout = () => {
-  try {
-    const cfg = window.ISA315_EVIDENCE_LAYOUT;
-    return (cfg && typeof cfg === 'object') ? cfg : null;
-  } catch (_) {
-    return null;
-  }
-};
-
-const ensurePositiveInteger = (value, fallback) => {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return fallback;
-  const floored = Math.floor(num);
-  return floored > 0 ? floored : fallback;
-};
-
-const mergeObjects = (base, override) => {
-  if (!override || typeof override !== 'object') return { ...base };
-  return { ...base, ...override };
 };
 
 const sanitizeSegment = (input='') => {
@@ -42,8 +22,6 @@ const sanitizeSegment = (input='') => {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'section';
 };
-
-const buildSlotId = (sectionId, index) => `${sanitizeSegment(sectionId)}_${index + 1}`;
 
 const sanitizeFileName = (name='', fallbackExt='') => {
   const cleaned = String(name).trim().replace(/[^a-z0-9_.-]+/gi, '_') || 'file';
@@ -68,7 +46,7 @@ const columnToNumber = (col='') => {
 };
 
 const parseCellAddress = (addr='') => {
-  const match = /^([A-Z]+)(\d+)$/i.exec((addr || '').toString().trim());
+  const match = /^([A-Z]+)(\d+)$/i.exec(addr.trim());
   if (!match) return { col: 1, row: 1 };
   return { col: columnToNumber(match[1]), row: parseInt(match[2], 10) || 1 };
 };
@@ -83,149 +61,13 @@ const arrayBufferToBase64 = (buffer) => {
   return btoa(binary);
 };
 
-const getColumnOffset = (offset) => {
-  if (!offset || typeof offset !== 'object') return 0;
-  for (const key of ['columns', 'column', 'col', 'columnOffset']) {
-    if (Number.isFinite(offset[key])) return offset[key];
-  }
-  return 0;
-};
-
-const getRowOffset = (offset) => {
-  if (!offset || typeof offset !== 'object') return 0;
-  for (const key of ['rows', 'row', 'rowOffset']) {
-    if (Number.isFinite(offset[key])) return offset[key];
-  }
-  return 0;
-};
-
-const computeDefaultSlot = (sectionId, index, base) => {
-  const anchor = parseCellAddress(base.startCell || 'B2');
-  const stride = Number.isFinite(base.rowStride) ? base.rowStride : 18;
-  const row = anchor.row + 1 + stride * index;
-  const col = anchor.col;
-  const colOffset = getColumnOffset(base.linkOffset);
-  const rowOffset = getRowOffset(base.linkOffset);
-  const linkCol = Math.max(1, col + colOffset);
-  const linkRow = Math.max(1, row + rowOffset);
-  return {
-    id: buildSlotId(sectionId, index),
-    sheet: base.sheet || 'Evidence',
-    imageCell: `${numberToColumn(col)}${row}`,
-    linkCell: `${numberToColumn(linkCol)}${linkRow}`,
-    size: base.imageSize,
-  };
-};
-
-const buildEvidenceLayout = (rawLayout) => {
-  const layout = {
-    maxFilesPerSection: ensurePositiveInteger(rawLayout?.maxFilesPerSection, DEFAULT_EVIDENCE_LAYOUT.maxFilesPerSection),
-    defaults: { ...DEFAULT_EVIDENCE_LAYOUT.defaults },
-    sections: {},
-  };
-
-  if (rawLayout?.defaults) {
-    const overrides = rawLayout.defaults;
-    if (overrides.sheet) layout.defaults.sheet = overrides.sheet;
-    if (overrides.startCell) layout.defaults.startCell = overrides.startCell;
-    if (Number.isFinite(overrides.rowStride)) layout.defaults.rowStride = overrides.rowStride;
-    if (overrides.imageSize) layout.defaults.imageSize = mergeObjects(DEFAULT_EVIDENCE_LAYOUT.defaults.imageSize, overrides.imageSize);
-    if (overrides.linkCellOffset) layout.defaults.linkCellOffset = mergeObjects(DEFAULT_EVIDENCE_LAYOUT.defaults.linkCellOffset, overrides.linkCellOffset);
-    if (overrides.header) layout.defaults.header = mergeObjects(DEFAULT_EVIDENCE_LAYOUT.defaults.header, overrides.header);
-  }
-
-  if (!layout.defaults.imageSize) layout.defaults.imageSize = { width: 320, height: 180 };
-  if (!layout.defaults.linkCellOffset) layout.defaults.linkCellOffset = { columns: 2, rows: 0 };
-  if (!layout.defaults.header) layout.defaults.header = { enabled: true, textPrefix: 'Section: ', sheet: null };
-
-  if (rawLayout?.sections && typeof rawLayout.sections === 'object') {
-    Object.keys(rawLayout.sections).forEach(sectionId => {
-      const section = rawLayout.sections[sectionId];
-      if (!section || typeof section !== 'object') return;
-      const copy = { ...section };
-      if (Array.isArray(section.slots)) {
-        copy.slots = section.slots.map(slot => (slot && typeof slot === 'object') ? { ...slot } : slot);
-      }
-      if (section.imageSize) copy.imageSize = mergeObjects(layout.defaults.imageSize, section.imageSize);
-      if (section.linkCellOffset) copy.linkCellOffset = mergeObjects(layout.defaults.linkCellOffset, section.linkCellOffset);
-      if (section.header) copy.header = mergeObjects(layout.defaults.header, section.header);
-      layout.sections[sectionId] = copy;
-    });
-  }
-
-  return layout;
-};
-
-const RAW_EVIDENCE_LAYOUT = readEvidenceLayout();
-const EVIDENCE_LAYOUT = buildEvidenceLayout(RAW_EVIDENCE_LAYOUT || {});
-const MAX_EVIDENCE_FILES = ensurePositiveInteger(EVIDENCE_LAYOUT.maxFilesPerSection, DEFAULT_EVIDENCE_LAYOUT.maxFilesPerSection);
-
-const SECTION_LAYOUT_CACHE = new Map();
-
-const getSectionLayout = (sectionId) => {
-  if (SECTION_LAYOUT_CACHE.has(sectionId)) return SECTION_LAYOUT_CACHE.get(sectionId);
-  const defaults = EVIDENCE_LAYOUT.defaults || {};
-  const override = (EVIDENCE_LAYOUT.sections && EVIDENCE_LAYOUT.sections[sectionId]) || {};
-  const sheet = override.sheet || defaults.sheet || 'Evidence';
-  const startCell = override.startCell || defaults.startCell || 'B2';
-  const rowStride = Number.isFinite(override.rowStride) ? override.rowStride : (Number.isFinite(defaults.rowStride) ? defaults.rowStride : 18);
-  const imageSize = override.imageSize || defaults.imageSize || { width: 320, height: 180 };
-  const linkOffset = override.linkCellOffset || defaults.linkCellOffset || { columns: 2, rows: 0 };
-  const headerDefaults = defaults.header || {};
-  const headerOverride = override.header || {};
-  const header = {
-    enabled: headerOverride.enabled != null ? !!headerOverride.enabled : (headerDefaults.enabled != null ? !!headerDefaults.enabled : true),
-    textPrefix: headerOverride.textPrefix || headerDefaults.textPrefix || 'Section: ',
-    cell: headerOverride.cell || startCell,
-    sheet: headerOverride.sheet || override.sheet || headerDefaults.sheet || sheet,
-  };
-
-  const slots = [];
-  const overrideSlots = Array.isArray(override.slots) ? override.slots : [];
-
-  for (let idx = 0; idx < MAX_EVIDENCE_FILES; idx++) {
-    const slotOverride = overrideSlots[idx];
-    if (slotOverride && typeof slotOverride === 'object') {
-      const slotSize = slotOverride.size || slotOverride.imageSize || imageSize;
-      const slotSheet = slotOverride.sheet || slotOverride.worksheet || sheet;
-      const slotImageCell = slotOverride.imageCell || slotOverride.cell || startCell;
-      let slotLinkCell = slotOverride.linkCell || slotOverride.link;
-      if (!slotLinkCell) {
-        const anchor = parseCellAddress(slotImageCell);
-        const colOffset = getColumnOffset(linkOffset);
-        const rowOffset = getRowOffset(linkOffset);
-        slotLinkCell = `${numberToColumn(Math.max(1, anchor.col + colOffset))}${Math.max(1, anchor.row + rowOffset)}`;
-      }
-      slots.push({
-        id: slotOverride.id || buildSlotId(sectionId, idx),
-        sheet: slotSheet,
-        imageCell: slotImageCell,
-        linkCell: slotLinkCell,
-        size: slotSize,
-      });
-    } else {
-      slots.push(computeDefaultSlot(sectionId, idx, {
-        sheet,
-        startCell,
-        rowStride,
-        imageSize,
-        linkOffset,
-      }));
-    }
-  }
-
-  const layout = { sheet, startCell, rowStride, imageSize, linkOffset, header, slots };
-  SECTION_LAYOUT_CACHE.set(sectionId, layout);
-  return layout;
-};
-
 const collectEvidenceSections = () => {
   const sections = [];
   $$('.accordion .acc-item').forEach(item => {
     const secId = item.getAttribute('data-sec') || '';
     if (!secId || secId === 'project_basics') return;
     const attach = item.querySelector('.q-attach');
-    const files = attach?.__evidenceFiles ? Array.from(attach.__evidenceFiles).slice(0, MAX_EVIDENCE_FILES) : [];
+    const files = attach?.__evidenceFiles ? Array.from(attach.__evidenceFiles).slice(0, EVIDENCE_EXPORT_CONFIG.maxFilesPerSection) : [];
     if (!files.length) return;
     const title = item.querySelector('.acc-title')?.textContent || secId;
     sections.push({ id: secId, title, files });
@@ -237,8 +79,7 @@ const prepareEvidencePayload = async (sections) => {
   const prepared = [];
   for (const section of sections) {
     const items = [];
-    const limit = Math.min(section.files.length, MAX_EVIDENCE_FILES);
-    for (let idx = 0; idx < limit; idx++) {
+    for (let idx = 0; idx < section.files.length && idx < EVIDENCE_EXPORT_CONFIG.maxFilesPerSection; idx++) {
       const file = section.files[idx];
       if (!file) continue;
       const buffer = await file.arrayBuffer();
@@ -260,8 +101,6 @@ const prepareEvidencePayload = async (sections) => {
         isImage: type.startsWith('image/'),
         name: file.name || finalName,
         sectionFolder,
-        slotIndex: idx,
-        slotId: buildSlotId(section.id, idx),
       };
       if (entry.isImage) {
         entry.base64 = arrayBufferToBase64(buffer);
@@ -275,66 +114,92 @@ const prepareEvidencePayload = async (sections) => {
   return prepared;
 };
 
-const applyEvidenceToWorkbook = (workbook, evidence) => {
+const applyEvidenceToWorkbook = (workbook, evidence, config = EVIDENCE_EXPORT_CONFIG) => {
   if (!Array.isArray(evidence) || !evidence.length) return;
   const sheetCache = new Map();
+  const defaults = {
+    sheet: config.defaultSheet,
+    startCell: config.defaultStartCell,
+    imageSize: config.defaultImageSize,
+    rowStride: config.defaultRowStride,
+    linkColumnOffset: config.linkColumnOffset,
+  };
+
+  const defaultAnchor = parseCellAddress(config.defaultStartCell || 'B2');
+  let nextDefaultRow = defaultAnchor.row;
 
   const getSheet = (name) => {
-    const key = name || 'Sheet1';
-    if (sheetCache.has(key)) return sheetCache.get(key);
-    let ws = workbook.getWorksheet(key);
-    if (!ws) ws = workbook.addWorksheet(key);
-    sheetCache.set(key, ws);
+    if (sheetCache.has(name)) return sheetCache.get(name);
+    let ws = workbook.getWorksheet(name);
+    if (!ws) ws = workbook.addWorksheet(name);
+    sheetCache.set(name, ws);
     return ws;
   };
 
-  evidence.forEach(section => {
-    const layout = getSectionLayout(section.sectionId);
-    const header = layout.header || {};
-    if (header.enabled) {
-      const headerSheet = getSheet(header.sheet || layout.sheet);
-      const headerAddr = header.cell || layout.startCell;
-      const headerCell = headerSheet.getCell(headerAddr);
-      headerCell.value = `${header.textPrefix || 'Section: '}${section.sectionTitle}`;
-      headerCell.font = { bold: true };
+  const getSettings = (sectionId) => {
+    const override = config.sections?.[sectionId] || {};
+    const settings = {
+      sheet: override.sheet || defaults.sheet,
+      startCell: override.startCell || defaults.startCell,
+      imageSize: override.imageSize || defaults.imageSize,
+      rowStride: override.rowStride || defaults.rowStride,
+      linkColumnOffset: typeof override.linkColumnOffset === 'number' ? override.linkColumnOffset : defaults.linkColumnOffset,
+    };
+    if (!override.startCell) {
+      settings.startCell = `${numberToColumn(defaultAnchor.col)}${nextDefaultRow}`;
     }
+    return settings;
+  };
+
+  const toZeroBasedAnchor = (addr) => {
+    const { col, row } = parseCellAddress(addr || 'A1');
+    return { col: Math.max(col - 1, 0), row: Math.max(row - 1, 0) };
+  };
+
+  evidence.forEach(section => {
+    const settings = getSettings(section.sectionId);
+    const ws = getSheet(settings.sheet);
+    const start = parseCellAddress(settings.startCell);
+    const headerCell = ws.getCell(start.row, start.col);
+    headerCell.value = `Section: ${section.sectionTitle}`;
+    headerCell.font = { bold: true };
+    const stride = settings.rowStride || defaults.rowStride || 18;
+    const hasCustomStart = Boolean(config.sections?.[section.sectionId]?.startCell);
 
     section.items.forEach((item, idx) => {
-      const slot = layout.slots[idx] || computeDefaultSlot(section.sectionId, idx, {
-        sheet: layout.sheet,
-        startCell: layout.startCell,
-        rowStride: layout.rowStride,
-        imageSize: layout.imageSize,
-        linkOffset: layout.linkOffset,
-      });
-      const ws = getSheet(slot.sheet || layout.sheet);
-      const anchor = parseCellAddress(slot.imageCell || layout.startCell);
-      const zeroAnchor = { col: Math.max(anchor.col - 1, 0), row: Math.max(anchor.row - 1, 0) };
-      const size = slot.size || layout.imageSize || EVIDENCE_LAYOUT.defaults?.imageSize || { width: 320, height: 180 };
-      const linkAddress = slot.linkCell || `${numberToColumn(Math.max(1, anchor.col + getColumnOffset(layout.linkOffset)))}${Math.max(1, anchor.row + getRowOffset(layout.linkOffset))}`;
-      const linkCell = ws.getCell(linkAddress);
+      const rowOffset = stride * idx;
+      const baseRow = start.row + 1 + rowOffset;
+      const baseCol = start.col;
+      const previewAnchor = toZeroBasedAnchor(`${numberToColumn(baseCol)}${baseRow}`);
+      const size = settings.imageSize || defaults.imageSize;
+      const linkOffset = Number.isFinite(settings.linkColumnOffset) ? Math.max(0, settings.linkColumnOffset) : 0;
+      const linkCol = Math.max(1, baseCol + linkOffset);
+      const linkCell = ws.getCell(baseRow, linkCol);
       linkCell.value = { text: item.name, hyperlink: item.relativePath };
       linkCell.font = { color: { argb: 'FF1F4E79' }, underline: true };
       linkCell.note = item.type || '';
-      if (slot.id) item.slotId = slot.id;
 
       if (item.isImage && item.base64) {
         const imageId = workbook.addImage({ base64: item.base64, extension: item.extension || 'png' });
         ws.addImage(imageId, {
-          tl: { col: zeroAnchor.col, row: zeroAnchor.row },
+          tl: { col: previewAnchor.col, row: previewAnchor.row },
           ext: { width: size?.width || 320, height: size?.height || 180 },
         });
-        const rowsCovered = Math.max(1, Math.ceil((size?.height || 180) / 20));
+        const rowsCovered = Math.ceil((size?.height || 180) / 20);
         for (let r = 0; r < rowsCovered; r++) {
-          const excelRow = ws.getRow(anchor.row + r);
+          const excelRow = ws.getRow(baseRow + r);
           if (!excelRow.height || excelRow.height < 60) excelRow.height = 60;
         }
       } else {
-        const fallbackCell = ws.getCell(slot.imageCell || layout.startCell);
-        fallbackCell.value = 'Preview not available';
-        fallbackCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
+        const noteCell = ws.getCell(baseRow, baseCol);
+        noteCell.value = 'Preview not available';
+        noteCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
       }
     });
+
+    if (!hasCustomStart) {
+      nextDefaultRow = start.row + 1 + stride * Math.max(section.items.length, 1) + 4;
+    }
   });
 };
 
@@ -581,7 +446,7 @@ export function onManuel(){
       });
 
       // 4) Apply evidence (images + hyperlinks)
-              applyEvidenceToWorkbook(wb, preparedEvidence);
+      applyEvidenceToWorkbook(wb, preparedEvidence, EVIDENCE_EXPORT_CONFIG);
 
       // 5) Prepare download bundle (Excel + evidence files)
       const outBuf = await wb.xlsx.writeBuffer();
