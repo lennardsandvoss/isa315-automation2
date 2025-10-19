@@ -8,10 +8,23 @@ export function onOverview() {
   const fileLbl = $('#dzFileName');
   const useBtn  = $('#btnExcelUse');
   const hint    = $('#excelHint');
+  const jsonInput  = $('#manualJsonInput');
+  const jsonHint   = $('#manualJsonHint');
+  const jsonStatus = $('#manualJsonStatus');
 
   if(!dz || !input || !useBtn) return;
 
   let selectedFile = null;
+
+  const setJsonStatus = (message='', type='info') => {
+    if (!jsonStatus) return;
+    jsonStatus.textContent = message;
+    if (jsonStatus.style){
+      if (type === 'error') jsonStatus.style.color = '#d9534f';
+      else if (type === 'success') jsonStatus.style.color = '#3fa34d';
+      else jsonStatus.style.color = '';
+    }
+  };
 
   const setFile = (file) => {
     selectedFile = file || null;
@@ -42,6 +55,29 @@ export function onOverview() {
     setFile(f);
   });
   dz.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); input.click(); } });
+
+  jsonInput?.addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try{
+      setJsonStatus('', 'info');
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || Array.isArray(data)){
+        throw new Error('Invalid payload');
+      }
+      savePrefill(data);
+      const count = Object.keys(data).length;
+      if (jsonHint){ jsonHint.textContent = 'JSON loaded. Opening manual entry…'; }
+      setJsonStatus(`Loaded ${count} answers. Redirecting to manual entry…`, 'success');
+      setTimeout(()=>{ location.href = 'manuel.html' + location.hash; }, 400);
+    }catch(err){
+      console.error('[ISA315][JSONImport] Failed to load JSON', err);
+      setJsonStatus('Could not load the JSON file. Ensure it was exported from manual entry.', 'error');
+    }finally{
+      e.target.value = '';
+    }
+  });
 
   useBtn.addEventListener('click', async ()=>{
     if(!selectedFile) return alert('Please select a file.');
