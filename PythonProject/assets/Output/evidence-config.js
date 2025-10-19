@@ -1,68 +1,37 @@
 (function(global){
-  const slotsConfig = global.ISA315_EVIDENCE_SLOTS || {};
-  const sectionBlueprints = slotsConfig.sections || {};
-  const maxFiles = Number.isFinite(slotsConfig.maxFiles) && slotsConfig.maxFiles > 0 ? slotsConfig.maxFiles : 10;
-
-  const defaults = {
-    sheet: slotsConfig.defaults?.sheet || 'Evidence',
-    startCell: slotsConfig.defaults?.startCell || 'B2',
-    rowStride: slotsConfig.defaults?.rowStride || 18,
-    imageSize: slotsConfig.defaults?.imageSize || { width: 320, height: 180 },
-    linkCellOffset: slotsConfig.defaults?.linkShift || slotsConfig.defaults?.linkCellOffset || { columns: 2, rows: 0 },
-    header: {
-      enabled: slotsConfig.defaults?.header?.enabled !== undefined ? !!slotsConfig.defaults.header.enabled : true,
-      textPrefix: slotsConfig.defaults?.header?.textPrefix || 'Section: ',
-      sheet: slotsConfig.defaults?.header?.sheet || slotsConfig.defaults?.sheet || 'Evidence',
-      cell: slotsConfig.defaults?.header?.cell || slotsConfig.defaults?.startCell || 'B2',
+  const config = {
+    // Maximum number of evidence files stored per section. Update if you need more slots.
+    maxFilesPerSection: 10,
+    defaults: {
+      // Sheet used when a section does not override it.
+      sheet: 'Evidence',
+      // Cell used as the anchor for the automatically generated slots.
+      startCell: 'B2',
+      // Distance in rows between automatically generated slots.
+      rowStride: 18,
+      // Default preview size for images (in pixels). Adjust to match your template layout.
+      imageSize: { width: 320, height: 180 },
+      // Hyperlink placement relative to the preview cell. Positive column values shift to the right.
+      linkCellOffset: { columns: 2, rows: 0 },
+      // Header configuration written when no custom slots are supplied.
+      header: { enabled: true, textPrefix: 'Section: ' }
     },
-  };
-
-  const sections = {};
-
-  const sanitize = (value='') => String(value)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '') || 'section';
-
-  Object.keys(sectionBlueprints).forEach((sectionId) => {
-    const blueprint = sectionBlueprints[sectionId] || {};
-    const entry = {
-      sheet: blueprint.sheet || defaults.sheet,
-      startCell: blueprint.startCell || defaults.startCell,
-      rowStride: Number.isFinite(blueprint.rowStride) ? blueprint.rowStride : defaults.rowStride,
-      imageSize: blueprint.imageSize || defaults.imageSize,
-      linkCellOffset: blueprint.linkShift || defaults.linkCellOffset,
-      header: {
-        enabled: blueprint.header?.enabled !== undefined ? !!blueprint.header.enabled : defaults.header.enabled,
-        textPrefix: blueprint.header?.textPrefix || defaults.header.textPrefix || `${sectionId} – `,
-        cell: blueprint.header?.cell || blueprint.startCell || defaults.header.cell,
-        sheet: blueprint.header?.sheet || blueprint.sheet || defaults.header.sheet,
-      },
-      slots: [],
-    };
-
-    const slots = Array.isArray(blueprint.slots) ? blueprint.slots : [];
-    for (let index = 0; index < maxFiles; index++) {
-      const slot = slots[index] || {};
-      entry.slots.push({
-        id: slot.id || `${sanitize(sectionId)}_${index + 1}`,
-        sheet: slot.sheet || blueprint.sheet || defaults.sheet,
-        imageCell: slot.imageCell || blueprint.startCell || defaults.startCell,
-        linkCell: slot.linkCell || null,
-        size: slot.size || blueprint.imageSize || defaults.imageSize,
-      });
+    sections: {
+      // Example override:
+      // 'IT Environment Overview': {
+      //   sheet: 'IT Overview',
+      //   startCell: 'C5',
+      //   rowStride: 16,
+      //   imageSize: { width: 280, height: 160 },
+      //   header: { enabled: false },
+      //   slots: [
+      //     { id: 'it_environment_overview_1', imageCell: 'C5', linkCell: 'F5', size: { width: 280, height: 160 } },
+      //     { id: 'it_environment_overview_2', imageCell: 'C21', linkCell: 'F21' },
+      //     // ...add up to 10 slots per section
+      //   ]
+      // }
     }
-
-    sections[sectionId] = entry;
-  });
-
-  const layout = {
-    maxFilesPerSection: maxFiles,
-    defaults,
-    sections,
-    __source: 'evidence-config.js',
-    __generatedAt: Date.now(),
   };
 
-  global.ISA315_EVIDENCE_LAYOUT = layout;
+  global.ISA315_EVIDENCE_LAYOUT = config;
 })(typeof window !== 'undefined' ? window : globalThis);
