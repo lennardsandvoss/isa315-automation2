@@ -492,6 +492,29 @@
         var input = rootEl.querySelector('input[type="file"]');
         var list  = rootEl.querySelector('.q-files');
         if(!drop || !input || !list) return;
+
+        function resolveMaxFiles(){
+          try {
+            if (typeof window.__ISA315_GET_EFFECTIVE_LAYOUT === 'function'){
+              var layout = window.__ISA315_GET_EFFECTIVE_LAYOUT();
+              if (layout && typeof layout.maxFilesPerSection === 'number' && layout.maxFilesPerSection > 0){
+                return Math.min(50, Math.max(1, layout.maxFilesPerSection));
+              }
+            }
+          } catch(_){ }
+          try {
+            var cfg = window.ISA315_EVIDENCE_LAYOUT;
+            if (cfg && typeof cfg.maxFilesPerSection === 'number' && cfg.maxFilesPerSection > 0){
+              return Math.min(50, Math.max(1, cfg.maxFilesPerSection));
+            }
+          } catch(_){ }
+          return 10;
+        }
+
+        var maxFiles = resolveMaxFiles();
+
+        var currentFiles = [];
+
         function renderFiles(files){
           list.innerHTML = '';
           Array.prototype.forEach.call(files, function(f){
@@ -507,12 +530,30 @@
             row.appendChild(thumb); row.appendChild(meta);
             list.appendChild(row);
           });
+          if (files.length >= maxFiles){
+            var info = el('div','q-fnote limit','Showing first '+maxFiles+' files. Remove one to add more.');
+            list.appendChild(info);
+          }
         }
-        function setFiles(files){ rootEl.__evidenceFiles = files; renderFiles(files); }
+
+        function setFiles(files){
+          maxFiles = resolveMaxFiles();
+          currentFiles = Array.prototype.slice.call(files, 0, maxFiles);
+          rootEl.__evidenceFiles = currentFiles;
+          renderFiles(currentFiles);
+        }
+
+        function appendFiles(files){
+          if(!files || !files.length) return;
+          var merged = currentFiles.slice();
+          Array.prototype.forEach.call(files, function(file){ merged.push(file); });
+          setFiles(merged);
+        }
+
         ;['dragenter','dragover'].forEach(function(evt){ drop.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.add('is-drag'); }); });
         ;['dragleave','drop'].forEach(function(evt){ drop.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.remove('is-drag'); }); });
-        drop.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) setFiles(f); });
-        input.addEventListener('change', function(e){ if(e.target.files && e.target.files.length) setFiles(e.target.files); });
+        drop.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) appendFiles(f); });
+        input.addEventListener('change', function(e){ if(e.target.files && e.target.files.length) appendFiles(e.target.files); input.value=''; });
       }
 
       (sec.questions||[]).forEach(function(q){
@@ -577,6 +618,504 @@
     });
     root.innerHTML = '';
     root.appendChild(wrap);
+  }
+
+  // Evidence export helpers for legacy fallback export
+  var LEGACY_DEFAULT_LAYOUT = {
+    maxFilesPerSection: 10,
+    defaults: {
+      sheet: null,
+      startCell: null,
+      rowStride: 18,
+      imageSize: { width: 320, height: 180 },
+      linkCellOffset: { columns: 2, rows: 0 },
+      header: { enabled: false, textPrefix: 'Section: ', sheet: null, cell: null }
+    },
+    sections: {}
+  };
+
+  function legacyReadLayout(){
+    try {
+      var cfg = window.ISA315_EVIDENCE_LAYOUT;
+      return (cfg && typeof cfg === 'object') ? cfg : null;
+    } catch(_){ return null; }
+  }
+
+  function legacyEnsurePositiveInteger(value, fallback){
+    var num = Number(value);
+    if (!isFinite(num)) return fallback;
+    var floored = Math.floor(num);
+    return floored > 0 ? floored : fallback;
+  }
+
+  function legacyMergeObjects(base, override){
+    if (!override || typeof override !== 'object') return Object.assign({}, base);
+    return Object.assign({}, base, override);
+  }
+
+  function legacySanitizeSegment(input){
+    return String(input||'')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'section';
+  }
+
+  function legacyBuildSlotId(sectionId, index){
+    return legacySanitizeSegment(sectionId) + '_' + (index + 1);
+  }
+
+  function legacySanitizeFileName(name, fallbackExt){
+    var cleaned = String(name||'').trim().replace(/[^a-z0-9_.-]+/gi, '_') || 'file';
+    if (/\.[a-z0-9]+$/i.test(cleaned)) return cleaned;
+    return fallbackExt ? cleaned + '.' + fallbackExt : cleaned;
+  }
+
+  function legacyNumberToColumn(num){
+    var col = '';
+    var n = Math.max(1, Math.floor(num||1));
+    while (n > 0){
+      var rem = (n - 1) % 26;
+      col = String.fromCharCode(65 + rem) + col;
+      n = Math.floor((n - 1) / 26);
+    }
+    return col || 'A';
+  }
+
+  function legacyColumnToNumber(col){
+    return String(col||'').toUpperCase().split('').reduce(function(sum, ch){ return sum * 26 + (ch.charCodeAt(0) - 64); }, 0);
+  }
+
+  function legacyParseCellAddress(addr){
+    var match = /^([A-Z]+)(\d+)$/i.exec(String(addr||'').trim());
+    if (!match) return { col: 1, row: 1 };
+    return { col: legacyColumnToNumber(match[1]), row: parseInt(match[2], 10) || 1 };
+  }
+
+  function legacyArrayBufferToBase64(buffer){
+    var binary = '';
+    var bytes = new Uint8Array(buffer);
+    for (var i=0; i<bytes.byteLength; i++){ binary += String.fromCharCode(bytes[i]); }
+    return btoa(binary);
+  }
+
+  function legacyGetColumnOffset(offset){
+    if (!offset || typeof offset !== 'object') return 0;
+    var keys = ['columns','column','col','columnOffset'];
+    for (var i=0; i<keys.length; i++){ if (isFinite(offset[keys[i]])) return Number(offset[keys[i]]); }
+    return 0;
+  }
+
+  function legacyGetRowOffset(offset){
+    if (!offset || typeof offset !== 'object') return 0;
+    var keys = ['rows','row','rowOffset'];
+    for (var i=0; i<keys.length; i++){ if (isFinite(offset[keys[i]])) return Number(offset[keys[i]]); }
+    return 0;
+  }
+
+  function legacyComputeDefaultSlot(sectionId, index, base){
+    if (!base || !base.sheet || !base.startCell) return null;
+    var anchor = legacyParseCellAddress(base.startCell);
+    var stride = isFinite(base.rowStride) ? base.rowStride : 18;
+    var row = anchor.row + 1 + stride * index;
+    var col = anchor.col;
+    var colOffset = legacyGetColumnOffset(base.linkOffset);
+    var rowOffset = legacyGetRowOffset(base.linkOffset);
+    var linkCol = Math.max(1, col + colOffset);
+    var linkRow = Math.max(1, row + rowOffset);
+    return {
+      id: legacyBuildSlotId(sectionId, index),
+      sheet: base.sheet,
+      imageCell: legacyNumberToColumn(col) + row,
+      linkCell: legacyNumberToColumn(linkCol) + linkRow,
+      size: base.imageSize
+    };
+  }
+
+  function legacySplitFileName(name){
+    var str = String(name || '');
+    var idx = str.lastIndexOf('.');
+    if (idx <= 0) return { base: str, ext: '' };
+    return { base: str.slice(0, idx), ext: str.slice(idx) };
+  }
+
+  function legacyEnsureUniqueFileName(registry, sectionId, desiredName){
+    var key = sectionId || '__default__';
+    var bucket;
+    if (registry instanceof Map){
+      bucket = registry.get(key);
+      if (!bucket){
+        bucket = (typeof Set !== 'undefined') ? new Set() : [];
+        registry.set(key, bucket);
+      }
+    } else {
+      bucket = registry[key];
+      if (!bucket){
+        bucket = [];
+        registry[key] = bucket;
+      }
+    }
+    var toLower = function(value){ return String(value || '').toLowerCase(); };
+    var candidate = desiredName;
+    var parts = legacySplitFileName(desiredName);
+    if (!parts.base) parts.base = 'file';
+    var counter = 2;
+    var hasValue = function(store, value){
+      if (store instanceof Set) return store.has(value);
+      return store.indexOf(value) >= 0;
+    };
+    var addValue = function(store, value){
+      if (store instanceof Set) store.add(value); else store.push(value);
+    };
+    var lowerCandidate = toLower(candidate);
+    while (hasValue(bucket, lowerCandidate)){
+      candidate = parts.base + ' (' + (counter++) + ')' + (parts.ext || '');
+      lowerCandidate = toLower(candidate);
+    }
+    addValue(bucket, lowerCandidate);
+    return candidate;
+  }
+
+  function legacyBuildEvidenceLayout(rawLayout){
+    var layout = {
+      maxFilesPerSection: legacyEnsurePositiveInteger(rawLayout && rawLayout.maxFilesPerSection, LEGACY_DEFAULT_LAYOUT.maxFilesPerSection),
+      defaults: Object.assign({}, LEGACY_DEFAULT_LAYOUT.defaults),
+      sections: {}
+    };
+
+    if (rawLayout && rawLayout.defaults){
+      var overrides = rawLayout.defaults;
+      if (overrides.sheet) layout.defaults.sheet = overrides.sheet;
+      if (overrides.startCell) layout.defaults.startCell = overrides.startCell;
+      if (isFinite(overrides.rowStride)) layout.defaults.rowStride = overrides.rowStride;
+      if (overrides.imageSize) layout.defaults.imageSize = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.imageSize, overrides.imageSize);
+      if (overrides.linkCellOffset) layout.defaults.linkCellOffset = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.linkCellOffset, overrides.linkCellOffset);
+      if (overrides.header) layout.defaults.header = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.header, overrides.header);
+    }
+
+    if (!layout.defaults.imageSize) layout.defaults.imageSize = { width: 320, height: 180 };
+    if (!layout.defaults.linkCellOffset) layout.defaults.linkCellOffset = { columns: 2, rows: 0 };
+    if (!layout.defaults.header) layout.defaults.header = { enabled: false, textPrefix: 'Section: ', sheet: null, cell: null };
+
+    if (rawLayout && rawLayout.sections && typeof rawLayout.sections === 'object'){
+      for (var key in rawLayout.sections){
+        if (!Object.prototype.hasOwnProperty.call(rawLayout.sections, key)) continue;
+        var section = rawLayout.sections[key];
+        if (!section || typeof section !== 'object') continue;
+        var copy = Object.assign({}, section);
+        if (Array.isArray(section.slots)){
+          copy.slots = section.slots.map(function(slot){ return slot && typeof slot === 'object' ? Object.assign({}, slot) : slot; });
+        }
+        if (section.imageSize) copy.imageSize = legacyMergeObjects(layout.defaults.imageSize, section.imageSize);
+        if (section.linkCellOffset) copy.linkCellOffset = legacyMergeObjects(layout.defaults.linkCellOffset, section.linkCellOffset);
+        if (section.header) copy.header = legacyMergeObjects(layout.defaults.header, section.header);
+        layout.sections[key] = copy;
+      }
+    }
+
+    return layout;
+  }
+
+  function legacyComputeLayoutSignature(rawLayout){
+    try {
+      return JSON.stringify(rawLayout || {});
+    } catch(_){
+      return null;
+    }
+  }
+
+  var LEGACY_LAYOUT_SIGNATURE = legacyComputeLayoutSignature(legacyReadLayout() || {});
+  var LEGACY_EVIDENCE_LAYOUT = legacyBuildEvidenceLayout(legacyReadLayout() || {});
+  var LEGACY_SECTION_LAYOUT_CACHE = (typeof Map !== 'undefined') ? new Map() : {};
+  var LEGACY_LAYOUT_LOGGED = false;
+
+  function legacyClearLayoutCache(){
+    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) LEGACY_SECTION_LAYOUT_CACHE.clear();
+    else LEGACY_SECTION_LAYOUT_CACHE = {};
+  }
+
+  function legacyResolveLayout(){
+    var rawLayout = legacyReadLayout() || {};
+    var signature = legacyComputeLayoutSignature(rawLayout);
+    if (!LEGACY_EVIDENCE_LAYOUT || signature !== LEGACY_LAYOUT_SIGNATURE){
+      LEGACY_EVIDENCE_LAYOUT = legacyBuildEvidenceLayout(rawLayout);
+      LEGACY_EVIDENCE_LAYOUT.__signature = signature;
+      legacyClearLayoutCache();
+      LEGACY_LAYOUT_LOGGED = false;
+    }
+    if (LEGACY_EVIDENCE_LAYOUT && typeof LEGACY_EVIDENCE_LAYOUT.__signature === 'undefined'){
+      LEGACY_EVIDENCE_LAYOUT.__signature = signature;
+    }
+    LEGACY_LAYOUT_SIGNATURE = signature;
+    if (!LEGACY_LAYOUT_LOGGED){
+      try{
+        var details = {
+          source: rawLayout && rawLayout.__source ? rawLayout.__source : 'default',
+          generatedAt: rawLayout && rawLayout.__generatedAt ? rawLayout.__generatedAt : null,
+          sections: Object.keys((LEGACY_EVIDENCE_LAYOUT && LEGACY_EVIDENCE_LAYOUT.sections) || {}).length,
+        };
+        console.info('[ISA315][LegacyEvidenceLayout] Using layout', details);
+      }catch(_){ }
+      LEGACY_LAYOUT_LOGGED = true;
+    }
+    return LEGACY_EVIDENCE_LAYOUT;
+  }
+
+  function legacyGetMaxFiles(layout){
+    var effective = layout || legacyResolveLayout();
+    return legacyEnsurePositiveInteger(effective && effective.maxFilesPerSection, LEGACY_DEFAULT_LAYOUT.maxFilesPerSection);
+  }
+
+  function legacyCacheGet(key){
+    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) return LEGACY_SECTION_LAYOUT_CACHE.get(key);
+    return LEGACY_SECTION_LAYOUT_CACHE[key];
+  }
+
+  function legacyCacheSet(key, value){
+    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) LEGACY_SECTION_LAYOUT_CACHE.set(key, value);
+    else LEGACY_SECTION_LAYOUT_CACHE[key] = value;
+  }
+
+  if (typeof window !== 'undefined' && typeof window.__ISA315_GET_EFFECTIVE_LAYOUT !== 'function'){
+    try{ window.__ISA315_GET_EFFECTIVE_LAYOUT = legacyResolveLayout; }catch(_){ }
+  }
+
+  function legacyGetSectionLayout(sectionId, layoutArg){
+    var effectiveLayout = layoutArg || legacyResolveLayout();
+    var signature = (effectiveLayout.__signature || LEGACY_LAYOUT_SIGNATURE || 'default');
+    var cacheKey = signature + '::' + sectionId;
+    var cached = legacyCacheGet(cacheKey);
+    if (cached) return cached;
+    var defaults = effectiveLayout.defaults || {};
+    var override = (effectiveLayout.sections && effectiveLayout.sections[sectionId]) || {};
+    var sheet = override.sheet || defaults.sheet || null;
+    var startCell = override.startCell || defaults.startCell || null;
+    var rowStride = isFinite(override.rowStride) ? override.rowStride : (isFinite(defaults.rowStride) ? defaults.rowStride : 18);
+    var imageSize = override.imageSize || defaults.imageSize || { width: 320, height: 180 };
+    var linkOffset = override.linkCellOffset || defaults.linkCellOffset || { columns: 2, rows: 0 };
+    var headerDefaults = defaults.header || {};
+    var headerOverride = override.header || {};
+    var header = {
+      enabled: headerOverride.enabled != null ? !!headerOverride.enabled : (headerDefaults.enabled != null ? !!headerDefaults.enabled : false),
+      textPrefix: headerOverride.textPrefix != null ? headerOverride.textPrefix : (headerDefaults.textPrefix != null ? headerDefaults.textPrefix : 'Section: '),
+      cell: headerOverride.cell || headerDefaults.cell || startCell,
+      sheet: headerOverride.sheet || override.sheet || headerDefaults.sheet || (defaults.header && defaults.header.sheet) || sheet
+    };
+    if (!header.cell || !header.sheet) header.enabled = false;
+
+    var slots = [];
+    var overrideSlots = Array.isArray(override.slots) ? override.slots : [];
+    var maxFiles = legacyGetMaxFiles(effectiveLayout);
+    for (var idx=0; idx<maxFiles; idx++){
+      var slotOverride = overrideSlots[idx];
+      if (slotOverride && typeof slotOverride === 'object'){
+        var slotSize = slotOverride.size || slotOverride.imageSize || imageSize;
+        var slotSheet = slotOverride.sheet || slotOverride.worksheet || sheet;
+        var slotImageCell = slotOverride.imageCell || slotOverride.cell || startCell;
+        var slotLinkCell = slotOverride.linkCell || slotOverride.link;
+        if (!slotLinkCell && slotImageCell){
+          var anchor = legacyParseCellAddress(slotImageCell);
+          var colOffset = legacyGetColumnOffset(linkOffset);
+          var rowOffset = legacyGetRowOffset(linkOffset);
+          slotLinkCell = legacyNumberToColumn(Math.max(1, anchor.col + colOffset)) + Math.max(1, anchor.row + rowOffset);
+        }
+        if (slotSheet && slotImageCell){
+          slots.push({
+            id: slotOverride.id || legacyBuildSlotId(sectionId, idx),
+            sheet: slotSheet,
+            imageCell: slotImageCell,
+            linkCell: slotLinkCell || null,
+            size: slotSize
+          });
+        } else {
+          slots.push(null);
+        }
+      } else {
+        slots.push(legacyComputeDefaultSlot(sectionId, idx, {
+          sheet: sheet,
+          startCell: startCell,
+          rowStride: rowStride,
+          imageSize: imageSize,
+          linkOffset: linkOffset
+        }));
+      }
+    }
+
+    var layout = { sheet: sheet, startCell: startCell, rowStride: rowStride, imageSize: imageSize, linkOffset: linkOffset, header: header, slots: slots };
+    legacyCacheSet(cacheKey, layout);
+    return layout;
+  }
+
+  legacyResolveLayout();
+
+  function legacyCollectEvidenceSections(layoutArg){
+    var layout = layoutArg || legacyResolveLayout();
+    var maxFiles = legacyGetMaxFiles(layout);
+    var sections = [];
+    Array.prototype.forEach.call(document.querySelectorAll('.accordion .acc-item'), function(item){
+      var secId = item.getAttribute('data-sec') || '';
+      if (!secId || secId === 'project_basics') return;
+      var attach = item.querySelector('.q-attach');
+      var files = attach && attach.__evidenceFiles ? Array.prototype.slice.call(attach.__evidenceFiles, 0, maxFiles) : [];
+      if (!files.length) return;
+      var titleEl = item.querySelector('.acc-title');
+      var title = titleEl ? titleEl.textContent : secId;
+      sections.push({ id: secId, title: title, files: files });
+    });
+    return sections;
+  }
+
+  async function legacyPrepareEvidencePayload(sections, layoutArg){
+    var layout = layoutArg || legacyResolveLayout();
+    var prepared = [];
+    var usedNames = (typeof Map !== 'undefined') ? new Map() : {};
+    for (var i=0; i<sections.length; i++){
+      var section = sections[i];
+      var items = [];
+      var sectionLayout = legacyGetSectionLayout(section.id, layout);
+      var limit = Math.min(section.files.length, legacyGetMaxFiles(layout));
+      for (var j=0; j<limit; j++){
+        var file = section.files[j];
+        if (!file) continue;
+        var slot = null;
+        var slotCandidate = sectionLayout.slots[j];
+        if (slotCandidate && slotCandidate.sheet && slotCandidate.imageCell){
+          slot = slotCandidate;
+        } else {
+          var fallbackSlot = legacyComputeDefaultSlot(section.id, j, {
+            sheet: sectionLayout.sheet,
+            startCell: sectionLayout.startCell,
+            rowStride: sectionLayout.rowStride,
+            imageSize: sectionLayout.imageSize,
+            linkOffset: sectionLayout.linkOffset
+          });
+          if (fallbackSlot && fallbackSlot.sheet && fallbackSlot.imageCell) slot = fallbackSlot;
+        }
+        var buffer = await file.arrayBuffer();
+        var type = file.type || '';
+        var extGuess = type.indexOf('image/')===0 ? (type.split('/')[1] || '').toLowerCase() : ((file.name || '').split('.').pop() || '').toLowerCase();
+        var normalizedExt = extGuess === 'jpg' ? 'jpeg' : extGuess;
+        var fallbackExt = normalizedExt || (type === 'application/pdf' ? 'pdf' : '');
+        var desiredName = legacySanitizeFileName(file.name, fallbackExt);
+        var sectionFolder = legacySanitizeSegment(section.id || 'section');
+        var finalName = legacyEnsureUniqueFileName(usedNames, section.id, desiredName);
+        var relPath = 'evidence/' + sectionFolder + '/' + finalName;
+        var entry = {
+          file: file,
+          buffer: buffer,
+          type: type,
+          extension: normalizedExt,
+          finalName: finalName,
+          relativePath: relPath,
+          sectionId: section.id,
+          sectionTitle: section.title,
+          isImage: type.indexOf('image/')===0,
+          name: file.name || finalName,
+          sectionFolder: sectionFolder,
+          slotIndex: j,
+          slotId: (slot && slot.id) ? slot.id : legacyBuildSlotId(section.id, j),
+          targetSlot: slot
+        };
+        if (entry.isImage){ entry.base64 = legacyArrayBufferToBase64(buffer); }
+        items.push(entry);
+      }
+      if (items.length){ prepared.push({ sectionId: section.id, sectionTitle: section.title, items: items }); }
+    }
+    return prepared;
+  }
+
+  function legacyApplyEvidenceToWorkbook(workbook, evidence, layoutArg){
+    if (!evidence || !evidence.length) return;
+    var effectiveLayout = layoutArg || legacyResolveLayout();
+    var canUseMap = typeof Map !== 'undefined';
+    var sheetCache = canUseMap ? new Map() : {};
+
+    function getSheet(name){
+      if (!name) return null;
+      var key = name;
+      if (canUseMap){ if (sheetCache.has(key)) return sheetCache.get(key); }
+      else if (sheetCache[key]) return sheetCache[key];
+      var ws = workbook.getWorksheet(key);
+      if (!ws) ws = workbook.addWorksheet(key);
+      if (canUseMap) sheetCache.set(key, ws); else sheetCache[key] = ws;
+      return ws;
+    }
+
+    for (var i=0; i<evidence.length; i++){
+      var section = evidence[i];
+      var layout = legacyGetSectionLayout(section.sectionId, effectiveLayout);
+      var header = layout.header || {};
+      if (header.enabled && (header.sheet || layout.sheet) && (header.cell || layout.startCell)){
+        var headerSheet = getSheet(header.sheet || layout.sheet);
+        if (headerSheet){
+          var headerTarget = header.cell || layout.startCell;
+          if (headerTarget){
+            var headerPoint = legacyParseCellAddress(headerTarget);
+            var headerCell = headerSheet.getCell(headerPoint.row, headerPoint.col);
+            headerCell.value = (header.textPrefix || 'Section: ') + section.sectionTitle;
+            headerCell.font = { bold: true };
+          }
+        }
+      }
+
+      for (var j=0; j<section.items.length; j++){
+        var item = section.items[j];
+        var slot = null;
+        if (item.targetSlot && item.targetSlot.sheet && item.targetSlot.imageCell){
+          slot = item.targetSlot;
+        } else {
+          var slotCandidate = layout.slots[j];
+          if (slotCandidate && slotCandidate.sheet && slotCandidate.imageCell){
+            slot = slotCandidate;
+          } else {
+            var computed = legacyComputeDefaultSlot(section.sectionId, j, {
+              sheet: layout.sheet,
+              startCell: layout.startCell,
+              rowStride: layout.rowStride,
+              imageSize: layout.imageSize,
+              linkOffset: layout.linkOffset
+            });
+            if (computed && computed.sheet && computed.imageCell) slot = computed;
+          }
+        }
+        if (!slot || !slot.sheet || !slot.imageCell) continue;
+        var ws = getSheet(slot.sheet || layout.sheet);
+        if (!ws) continue;
+        var anchorPoint = legacyParseCellAddress(slot.imageCell || layout.startCell);
+        var zeroAnchor = { col: Math.max(anchorPoint.col - 1, 0), row: Math.max(anchorPoint.row - 1, 0) };
+        var size = slot.size || layout.imageSize || (effectiveLayout.defaults && effectiveLayout.defaults.imageSize) || { width: 320, height: 180 };
+        var linkAddress = slot.linkCell || ((layout.linkOffset && slot.imageCell)
+          ? (legacyNumberToColumn(Math.max(1, anchorPoint.col + legacyGetColumnOffset(layout.linkOffset))) + Math.max(1, anchorPoint.row + legacyGetRowOffset(layout.linkOffset))))
+          : null;
+        if (linkAddress){
+          var linkPoint = legacyParseCellAddress(linkAddress);
+          var linkCell = ws.getCell(linkPoint.row, linkPoint.col);
+          linkCell.value = { text: item.name, hyperlink: item.relativePath };
+          linkCell.font = { color: { argb: 'FF1F4E79' }, underline: true };
+          linkCell.note = item.type || '';
+        }
+        if (slot.id) item.slotId = slot.id;
+
+        if (item.isImage && item.base64){
+          var imageId = workbook.addImage({ base64: item.base64, extension: item.extension || 'png' });
+          ws.addImage(imageId, {
+            tl: { col: zeroAnchor.col, row: zeroAnchor.row },
+            ext: { width: (size && size.width) || 320, height: (size && size.height) || 180 }
+          });
+          var rowsCovered = Math.max(1, Math.ceil(((size && size.height) || 180) / 20));
+          for (var r=0; r<rowsCovered; r++){
+            var excelRow = ws.getRow(anchorPoint.row + r);
+            if (!excelRow.height || excelRow.height < 60) excelRow.height = 60;
+          }
+        } else {
+          if (slot.imageCell){
+            var fallbackPoint = legacyParseCellAddress(slot.imageCell);
+            var noteCell = ws.getCell(fallbackPoint.row, fallbackPoint.col);
+            noteCell.value = 'Preview not available';
+            noteCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
+          }
+        }
+      }
+    }
   }
 
   document.addEventListener('DOMContentLoaded', function(){
@@ -648,14 +1187,21 @@
                 alert('ExcelJS library not loaded. Please check your internet connection.');
                 return;
               }
+              if (typeof JSZip === 'undefined'){
+                alert('JSZip library not loaded. Please check your internet connection.');
+                return;
+              }
               // Collect current answers from the manual form
               var answers = {};
               Array.prototype.forEach.call(document.querySelectorAll('.acc-panel input, .acc-panel textarea, .acc-panel select'), function(el){ if(el.id) answers[el.id] = el.value; });
+              var layout = legacyResolveLayout();
+              var evidenceSections = legacyCollectEvidenceSections(layout);
+              var preparedEvidence = await legacyPrepareEvidencePayload(evidenceSections, layout);
 
               // Build sequential Question-N map (including first section)
               var idsInOrder = [];
               try{
-                (window.FORM_SCHEMA||[]).forEach(function(s){ (s.questions||[]).forEach(function(q){ idsInOrder.push(q.id); }); });
+                (window.FORM_SCHEMA||[]).forEach(function(s){ (s.questions||[]).forEach(function(q){ idsInOrder.push(q.id); });});
               }catch(_){ }
               var numToId = new Map(); // 1-based
               idsInOrder.forEach(function(id, idx){ numToId.set(idx+1, id); });
@@ -678,19 +1224,16 @@
                     abs.push(new URL('./assets/Output/Template.xlsx', location.href).href);
                   }catch(_){ }
                   var all = rel.concat(abs);
-                  // de-dup
                   return Array.from(new Set(all));
                 }
                 var candidates = buildCandidates();
-                // Try fetch first
                 for (var i=0;i<candidates.length;i++){
                   var url = candidates[i];
                   try{
                     var resp = await fetch(url, { cache: 'no-cache' });
                     if(resp && resp.ok){ return await resp.arrayBuffer(); }
-                  }catch(e){ /* try next */ }
+                  }catch(e){ }
                 }
-                // Fallback: try XMLHttpRequest (helps in some file:// contexts)
                 function tryXhr(url){
                   return new Promise(function(resolve, reject){
                     try{
@@ -714,9 +1257,8 @@
                   try{
                     var buf = await tryXhr(url2);
                     if (buf) return buf;
-                  }catch(e){ /* continue */ }
+                  }catch(e){ }
                 }
-                // Final fallback for file:// contexts: prompt user to pick the template file locally
                 if (location.protocol === 'file:'){
                   try{
                     var picked = await new Promise(function(resolve, reject){
@@ -736,10 +1278,10 @@
                       setTimeout(function(){ try{ inp.remove(); }catch(_){ } reject(new Error('picker canceled')); }, 30000);
                     });
                     if (picked) return picked;
-                  }catch(_){ /* ignore and fall through */ }
+                  }catch(_){ }
                 }
                 console.error('[ISA315][Legacy] Default template not found via any path or method. Tried:', candidates);
-                if (window.showError) { window.showError({ title:'Default template not found', message:'We could not locate assets/Template.xlsx using any known path.', hint:'Make sure the Template.xlsx file exists in the assets folder or pick it manually when prompted. If running via file://, try a local webserver.', code:'EXP-TPL-404' }); } else { alert('Default template not found: assets/Template.xlsx'); }
+                if (window.showError) { window.showError({ title:'Default template not found', message:'We could not locate assets/Output/Template.xlsx using any known path.', hint:'Make sure the Template.xlsx file exists in the assets folder or pick it manually when prompted. If running via file://, try a local webserver.', code:'EXP-TPL-404' }); } else { alert('Default template not found: assets/Output/Template.xlsx'); }
                 throw new Error('Default template missing');
               }
               var buf = await loadTemplateBuffer();
@@ -776,12 +1318,32 @@
                 });
               });
 
-              // Download filled workbook
+              // Embed evidence previews and hyperlinks
+              legacyApplyEvidenceToWorkbook(wb, preparedEvidence, layout);
+
+              // Package Excel + evidence files into ZIP
               var outBuf = await wb.xlsx.writeBuffer();
-              var blob = new Blob([outBuf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-              var url = URL.createObjectURL(blob);
+              var zip = new JSZip();
+              var dateTag = new Date().toISOString().slice(0,10);
+              var excelName = 'isa315_filled_' + dateTag + '.xlsx';
+              zip.file(excelName, outBuf);
+              if (preparedEvidence.length){
+                var evidenceRoot = zip.folder('evidence');
+                preparedEvidence.forEach(function(section){
+                  if (!section.items || !section.items.length) return;
+                  var secFolderName = section.items[0] && section.items[0].sectionFolder ? section.items[0].sectionFolder : legacySanitizeSegment(section.sectionId);
+                  var secFolder = evidenceRoot.folder(secFolderName);
+                  section.items.forEach(function(item){
+                    if (!item || !item.buffer) return;
+                    secFolder.file(item.finalName, item.buffer);
+                  });
+                });
+              }
+
+              var zipBlob = await zip.generateAsync({ type: 'blob' });
+              var url = URL.createObjectURL(zipBlob);
               var a = document.createElement('a');
-              a.href = url; a.download = 'isa315_filled_'+(new Date().toISOString().slice(0,10))+'.xlsx'; a.rel = 'noopener';
+              a.href = url; a.download = 'isa315_export_' + dateTag + '.zip'; a.rel = 'noopener';
               document.body.appendChild(a); a.click(); a.remove();
               setTimeout(function(){ URL.revokeObjectURL(url); }, 3000);
             }catch(err){
@@ -789,6 +1351,7 @@
               if (window.showError) { window.showError({ title:'Excel export failed', message:'We could not generate the Excel file.', hint:'Verify Template.xlsx exists and is accessible. If running locally, try via a local webserver. Then try exporting again.', code:'EXP-WRITE-001', cause: (typeof err!=='undefined'?err:undefined) }); } else { alert('Excel export failed. Please check the template and try again.'); }
             }
           });
+
         });
       } else if (page === 'overview') {
         // Legacy overview: wire Excel upload and parse → savePrefill → redirect

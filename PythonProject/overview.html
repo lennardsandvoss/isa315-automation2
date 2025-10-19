@@ -54,10 +54,10 @@
         <div id="dropZone" class="dropzone" tabindex="0" aria-label="Upload Excel">
           <div class="dz-inner">
             <div class="dz-icon">📄</div>
-            <div class="dz-title">Drop your Excel here</div>
+            <div class="dz-title">Drop your Excel or JSON here</div>
             <div class="dz-sub">or</div>
             <label class="btn" for="excelInput" style="margin-top:6px">Browse file</label>
-            <input id="excelInput" type="file" accept=".xlsx,.xlsm,.csv" hidden />
+            <input id="excelInput" type="file" accept=".xlsx,.xlsm,.csv,.json,application/json" hidden />
             <div id="dzFileName" class="dz-file small" aria-live="polite"></div>
           </div>
         </div>
@@ -66,7 +66,7 @@
           <button id="btnExcelUse" class="btn primary" disabled>Use this file</button>
         </div>
 
-        <p class="hint" id="excelHint">Accepted: .xlsx, .xlsm, .csv</p>
+        <p class="hint" id="excelHint">Accepted: .xlsx, .xlsm, .csv, .json</p>
         <p class="small">Troubleshooting: If the file won’t load, check that your internet connection allows loading the XLSX library. If you run this page directly from your file system, some browsers block local file access—try using a simple local webserver. Make sure your sheet has visible data and a sheet name containing the word “Question”.</p>
       </div>
 
@@ -80,9 +80,13 @@
           <li>Optional translation later</li>
         </ul>
 
-        <div class="row right" style="margin-top:16px">
+        <div class="row right" style="margin-top:16px; gap:8px; flex-wrap:wrap">
           <a class="btn primary" href="manuel.html">Open manual entry</a>
+          <label class="btn" for="manualJsonInput">Load answers (JSON)</label>
+          <input id="manualJsonInput" type="file" accept="application/json,.json" hidden />
         </div>
+        <p class="small" id="manualJsonHint">Restore a session by selecting the JSON file exported from manual entry.</p>
+        <p class="small" id="manualJsonStatus" aria-live="polite"></p>
       </div>
     </section>
   </main>
