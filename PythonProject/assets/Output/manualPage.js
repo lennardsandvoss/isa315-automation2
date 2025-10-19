@@ -412,6 +412,207 @@ const applyEvidenceToWorkbook = (workbook, evidence, layoutArg) => {
   });
 };
 
+// Evidence export configuration – adjust to control placement and sizing in the template
+const EVIDENCE_EXPORT_CONFIG = {
+  maxFilesPerSection: 10,
+  defaultSheet: 'Evidence',
+  defaultStartCell: 'B2',
+  defaultImageSize: { width: 320, height: 180 },
+  defaultRowStride: 18,
+  linkColumnOffset: 2,
+  sections: {
+    // Example:
+    // 'IT Environment Overview': { sheet: 'Evidence', startCell: 'B2', imageSize: { width: 300, height: 170 }, rowStride: 18, linkColumnOffset: 2 },
+  },
+};
+
+const sanitizeSegment = (input='') => {
+  return String(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'section';
+};
+
+const sanitizeFileName = (name='', fallbackExt='') => {
+  const cleaned = String(name).trim().replace(/[^a-z0-9_.-]+/gi, '_') || 'file';
+  const hasExt = /\.[a-z0-9]+$/i.test(cleaned);
+  if (hasExt) return cleaned;
+  return fallbackExt ? `${cleaned}.${fallbackExt}` : cleaned;
+};
+
+const numberToColumn = (num=1) => {
+  let col = '';
+  let n = Math.max(1, Math.floor(num));
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    col = String.fromCharCode(65 + rem) + col;
+    n = Math.floor((n - 1) / 26);
+  }
+  return col || 'A';
+};
+
+const columnToNumber = (col='') => {
+  return col.toUpperCase().split('').reduce((sum, ch) => sum * 26 + (ch.charCodeAt(0) - 64), 0);
+};
+
+const parseCellAddress = (addr='') => {
+  const match = /^([A-Z]+)(\d+)$/i.exec(addr.trim());
+  if (!match) return { col: 1, row: 1 };
+  return { col: columnToNumber(match[1]), row: parseInt(match[2], 10) || 1 };
+};
+
+const arrayBufferToBase64 = (buffer) => {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+};
+
+const collectEvidenceSections = () => {
+  const sections = [];
+  $$('.accordion .acc-item').forEach(item => {
+    const secId = item.getAttribute('data-sec') || '';
+    if (!secId || secId === 'project_basics') return;
+    const attach = item.querySelector('.q-attach');
+    const files = attach?.__evidenceFiles ? Array.from(attach.__evidenceFiles).slice(0, EVIDENCE_EXPORT_CONFIG.maxFilesPerSection) : [];
+    if (!files.length) return;
+    const title = item.querySelector('.acc-title')?.textContent || secId;
+    sections.push({ id: secId, title, files });
+  });
+  return sections;
+};
+
+const prepareEvidencePayload = async (sections) => {
+  const prepared = [];
+  for (const section of sections) {
+    const items = [];
+    for (let idx = 0; idx < section.files.length && idx < EVIDENCE_EXPORT_CONFIG.maxFilesPerSection; idx++) {
+      const file = section.files[idx];
+      if (!file) continue;
+      const buffer = await file.arrayBuffer();
+      const type = file.type || '';
+      const extGuess = type.startsWith('image/') ? (type.split('/')[1] || '').toLowerCase() : (file.name.split('.').pop() || '').toLowerCase();
+      const normalizedExt = extGuess === 'jpg' ? 'jpeg' : extGuess;
+      const finalName = sanitizeFileName(file.name, normalizedExt || (type === 'application/pdf' ? 'pdf' : ''));
+      const sectionFolder = sanitizeSegment(section.id || 'section');
+      const relPath = `evidence/${sectionFolder}/${finalName}`;
+      const entry = {
+        file,
+        buffer,
+        type,
+        extension: normalizedExt,
+        finalName,
+        relativePath: relPath,
+        sectionId: section.id,
+        sectionTitle: section.title,
+        isImage: type.startsWith('image/'),
+        name: file.name || finalName,
+        sectionFolder,
+      };
+      if (entry.isImage) {
+        entry.base64 = arrayBufferToBase64(buffer);
+      }
+      items.push(entry);
+    }
+    if (items.length) {
+      prepared.push({ sectionId: section.id, sectionTitle: section.title, items });
+    }
+  }
+  return prepared;
+};
+
+const applyEvidenceToWorkbook = (workbook, evidence, config = EVIDENCE_EXPORT_CONFIG) => {
+  if (!Array.isArray(evidence) || !evidence.length) return;
+  const sheetCache = new Map();
+  const defaults = {
+    sheet: config.defaultSheet,
+    startCell: config.defaultStartCell,
+    imageSize: config.defaultImageSize,
+    rowStride: config.defaultRowStride,
+    linkColumnOffset: config.linkColumnOffset,
+  };
+
+  const defaultAnchor = parseCellAddress(config.defaultStartCell || 'B2');
+  let nextDefaultRow = defaultAnchor.row;
+
+  const getSheet = (name) => {
+    if (sheetCache.has(name)) return sheetCache.get(name);
+    let ws = workbook.getWorksheet(name);
+    if (!ws) ws = workbook.addWorksheet(name);
+    sheetCache.set(name, ws);
+    return ws;
+  };
+
+  const getSettings = (sectionId) => {
+    const override = config.sections?.[sectionId] || {};
+    const settings = {
+      sheet: override.sheet || defaults.sheet,
+      startCell: override.startCell || defaults.startCell,
+      imageSize: override.imageSize || defaults.imageSize,
+      rowStride: override.rowStride || defaults.rowStride,
+      linkColumnOffset: typeof override.linkColumnOffset === 'number' ? override.linkColumnOffset : defaults.linkColumnOffset,
+    };
+    if (!override.startCell) {
+      settings.startCell = `${numberToColumn(defaultAnchor.col)}${nextDefaultRow}`;
+    }
+    return settings;
+  };
+
+  const toZeroBasedAnchor = (addr) => {
+    const { col, row } = parseCellAddress(addr || 'A1');
+    return { col: Math.max(col - 1, 0), row: Math.max(row - 1, 0) };
+  };
+
+  evidence.forEach(section => {
+    const settings = getSettings(section.sectionId);
+    const ws = getSheet(settings.sheet);
+    const start = parseCellAddress(settings.startCell);
+    const headerCell = ws.getCell(start.row, start.col);
+    headerCell.value = `Section: ${section.sectionTitle}`;
+    headerCell.font = { bold: true };
+    const stride = settings.rowStride || defaults.rowStride || 18;
+    const hasCustomStart = Boolean(config.sections?.[section.sectionId]?.startCell);
+
+    section.items.forEach((item, idx) => {
+      const rowOffset = stride * idx;
+      const baseRow = start.row + 1 + rowOffset;
+      const baseCol = start.col;
+      const previewAnchor = toZeroBasedAnchor(`${numberToColumn(baseCol)}${baseRow}`);
+      const size = settings.imageSize || defaults.imageSize;
+      const linkOffset = Number.isFinite(settings.linkColumnOffset) ? Math.max(0, settings.linkColumnOffset) : 0;
+      const linkCol = Math.max(1, baseCol + linkOffset);
+      const linkCell = ws.getCell(baseRow, linkCol);
+      linkCell.value = { text: item.name, hyperlink: item.relativePath };
+      linkCell.font = { color: { argb: 'FF1F4E79' }, underline: true };
+      linkCell.note = item.type || '';
+
+      if (item.isImage && item.base64) {
+        const imageId = workbook.addImage({ base64: item.base64, extension: item.extension || 'png' });
+        ws.addImage(imageId, {
+          tl: { col: previewAnchor.col, row: previewAnchor.row },
+          ext: { width: size?.width || 320, height: size?.height || 180 },
+        });
+        const rowsCovered = Math.ceil((size?.height || 180) / 20);
+        for (let r = 0; r < rowsCovered; r++) {
+          const excelRow = ws.getRow(baseRow + r);
+          if (!excelRow.height || excelRow.height < 60) excelRow.height = 60;
+        }
+      } else {
+        const noteCell = ws.getCell(baseRow, baseCol);
+        noteCell.value = 'Preview not available';
+        noteCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
+      }
+    });
+
+    if (!hasCustomStart) {
+      nextDefaultRow = start.row + 1 + stride * Math.max(section.items.length, 1) + 4;
+    }
+  });
+};
+
 export function onManuel(){
   const root = document.querySelector('#manualRoot');
   if(!root) return;
@@ -528,9 +729,8 @@ export function onManuel(){
       }
       // Load default template from assets (always use repository template)
       const answers = collectAnswers();
-      const layout = resolveEvidenceLayout();
-      const evidenceSections = collectEvidenceSections(layout);
-      const preparedEvidence = await prepareEvidencePayload(evidenceSections, layout);
+      const evidenceSections = collectEvidenceSections();
+      const preparedEvidence = await prepareEvidencePayload(evidenceSections);
 
       // Build sequential Question-N map based on schema
       const idsInOrder = FORM_SCHEMA
@@ -656,7 +856,7 @@ export function onManuel(){
       });
 
       // 4) Apply evidence (images + hyperlinks)
-      applyEvidenceToWorkbook(wb, preparedEvidence, layout);
+      applyEvidenceToWorkbook(wb, preparedEvidence, EVIDENCE_EXPORT_CONFIG);
 
       // 5) Prepare download bundle (Excel + evidence files)
       const outBuf = await wb.xlsx.writeBuffer();

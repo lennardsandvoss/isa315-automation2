@@ -492,29 +492,6 @@
         var input = rootEl.querySelector('input[type="file"]');
         var list  = rootEl.querySelector('.q-files');
         if(!drop || !input || !list) return;
-
-        function resolveMaxFiles(){
-          try {
-            if (typeof window.__ISA315_GET_EFFECTIVE_LAYOUT === 'function'){
-              var layout = window.__ISA315_GET_EFFECTIVE_LAYOUT();
-              if (layout && typeof layout.maxFilesPerSection === 'number' && layout.maxFilesPerSection > 0){
-                return Math.min(50, Math.max(1, layout.maxFilesPerSection));
-              }
-            }
-          } catch(_){ }
-          try {
-            var cfg = window.ISA315_EVIDENCE_LAYOUT;
-            if (cfg && typeof cfg.maxFilesPerSection === 'number' && cfg.maxFilesPerSection > 0){
-              return Math.min(50, Math.max(1, cfg.maxFilesPerSection));
-            }
-          } catch(_){ }
-          return 10;
-        }
-
-        var maxFiles = resolveMaxFiles();
-
-        var currentFiles = [];
-
         function renderFiles(files){
           list.innerHTML = '';
           Array.prototype.forEach.call(files, function(f){
@@ -530,30 +507,12 @@
             row.appendChild(thumb); row.appendChild(meta);
             list.appendChild(row);
           });
-          if (files.length >= maxFiles){
-            var info = el('div','q-fnote limit','Showing first '+maxFiles+' files. Remove one to add more.');
-            list.appendChild(info);
-          }
         }
-
-        function setFiles(files){
-          maxFiles = resolveMaxFiles();
-          currentFiles = Array.prototype.slice.call(files, 0, maxFiles);
-          rootEl.__evidenceFiles = currentFiles;
-          renderFiles(currentFiles);
-        }
-
-        function appendFiles(files){
-          if(!files || !files.length) return;
-          var merged = currentFiles.slice();
-          Array.prototype.forEach.call(files, function(file){ merged.push(file); });
-          setFiles(merged);
-        }
-
+        function setFiles(files){ rootEl.__evidenceFiles = files; renderFiles(files); }
         ;['dragenter','dragover'].forEach(function(evt){ drop.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.add('is-drag'); }); });
         ;['dragleave','drop'].forEach(function(evt){ drop.addEventListener(evt, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.remove('is-drag'); }); });
-        drop.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) appendFiles(f); });
-        input.addEventListener('change', function(e){ if(e.target.files && e.target.files.length) appendFiles(e.target.files); input.value=''; });
+        drop.addEventListener('drop', function(e){ var f=e.dataTransfer&&e.dataTransfer.files; if(f&&f.length) setFiles(f); });
+        input.addEventListener('change', function(e){ if(e.target.files && e.target.files.length) setFiles(e.target.files); });
       }
 
       (sec.questions||[]).forEach(function(q){
@@ -621,47 +580,24 @@
   }
 
   // Evidence export helpers for legacy fallback export
-  var LEGACY_DEFAULT_LAYOUT = {
+  var LEGACY_EVIDENCE_EXPORT_CONFIG = {
     maxFilesPerSection: 10,
-    defaults: {
-      sheet: 'Evidence',
-      startCell: 'B2',
-      rowStride: 18,
-      imageSize: { width: 320, height: 180 },
-      linkCellOffset: { columns: 2, rows: 0 },
-      header: { enabled: true, textPrefix: 'Section: ', sheet: null }
-    },
-    sections: {}
+    defaultSheet: 'Evidence',
+    defaultStartCell: 'B2',
+    defaultImageSize: { width: 320, height: 180 },
+    defaultRowStride: 18,
+    linkColumnOffset: 2,
+    sections: {
+      // Example override:
+      // 'IT Environment Overview': { sheet:'Evidence', startCell:'B2', imageSize:{ width:300, height:170 }, rowStride:18, linkColumnOffset:2 }
+    }
   };
-
-  function legacyReadLayout(){
-    try {
-      var cfg = window.ISA315_EVIDENCE_LAYOUT;
-      return (cfg && typeof cfg === 'object') ? cfg : null;
-    } catch(_){ return null; }
-  }
-
-  function legacyEnsurePositiveInteger(value, fallback){
-    var num = Number(value);
-    if (!isFinite(num)) return fallback;
-    var floored = Math.floor(num);
-    return floored > 0 ? floored : fallback;
-  }
-
-  function legacyMergeObjects(base, override){
-    if (!override || typeof override !== 'object') return Object.assign({}, base);
-    return Object.assign({}, base, override);
-  }
 
   function legacySanitizeSegment(input){
     return String(input||'')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_+|_+$/g, '') || 'section';
-  }
-
-  function legacyBuildSlotId(sectionId, index){
-    return legacySanitizeSegment(sectionId) + '_' + (index + 1);
   }
 
   function legacySanitizeFileName(name, fallbackExt){
@@ -698,245 +634,13 @@
     return btoa(binary);
   }
 
-  function legacyGetColumnOffset(offset){
-    if (!offset || typeof offset !== 'object') return 0;
-    var keys = ['columns','column','col','columnOffset'];
-    for (var i=0; i<keys.length; i++){ if (isFinite(offset[keys[i]])) return Number(offset[keys[i]]); }
-    return 0;
-  }
-
-  function legacyGetRowOffset(offset){
-    if (!offset || typeof offset !== 'object') return 0;
-    var keys = ['rows','row','rowOffset'];
-    for (var i=0; i<keys.length; i++){ if (isFinite(offset[keys[i]])) return Number(offset[keys[i]]); }
-    return 0;
-  }
-
-  function legacyComputeDefaultSlot(sectionId, index, base){
-    var anchor = legacyParseCellAddress(base.startCell || 'B2');
-    var stride = isFinite(base.rowStride) ? base.rowStride : 18;
-    var row = anchor.row + 1 + stride * index;
-    var col = anchor.col;
-    var colOffset = legacyGetColumnOffset(base.linkOffset);
-    var rowOffset = legacyGetRowOffset(base.linkOffset);
-    var linkCol = Math.max(1, col + colOffset);
-    var linkRow = Math.max(1, row + rowOffset);
-    return {
-      id: legacyBuildSlotId(sectionId, index),
-      sheet: base.sheet || 'Evidence',
-      imageCell: legacyNumberToColumn(col) + row,
-      linkCell: legacyNumberToColumn(linkCol) + linkRow,
-      size: base.imageSize
-    };
-  }
-
-  function legacySplitFileName(name){
-    var str = String(name || '');
-    var idx = str.lastIndexOf('.');
-    if (idx <= 0) return { base: str, ext: '' };
-    return { base: str.slice(0, idx), ext: str.slice(idx) };
-  }
-
-  function legacyEnsureUniqueFileName(registry, sectionId, desiredName){
-    var key = sectionId || '__default__';
-    var bucket;
-    if (registry instanceof Map){
-      bucket = registry.get(key);
-      if (!bucket){
-        bucket = (typeof Set !== 'undefined') ? new Set() : [];
-        registry.set(key, bucket);
-      }
-    } else {
-      bucket = registry[key];
-      if (!bucket){
-        bucket = [];
-        registry[key] = bucket;
-      }
-    }
-    var toLower = function(value){ return String(value || '').toLowerCase(); };
-    var candidate = desiredName;
-    var parts = legacySplitFileName(desiredName);
-    if (!parts.base) parts.base = 'file';
-    var counter = 2;
-    var hasValue = function(store, value){
-      if (store instanceof Set) return store.has(value);
-      return store.indexOf(value) >= 0;
-    };
-    var addValue = function(store, value){
-      if (store instanceof Set) store.add(value); else store.push(value);
-    };
-    var lowerCandidate = toLower(candidate);
-    while (hasValue(bucket, lowerCandidate)){
-      candidate = parts.base + ' (' + (counter++) + ')' + (parts.ext || '');
-      lowerCandidate = toLower(candidate);
-    }
-    addValue(bucket, lowerCandidate);
-    return candidate;
-  }
-
-  function legacyBuildEvidenceLayout(rawLayout){
-    var layout = {
-      maxFilesPerSection: legacyEnsurePositiveInteger(rawLayout && rawLayout.maxFilesPerSection, LEGACY_DEFAULT_LAYOUT.maxFilesPerSection),
-      defaults: Object.assign({}, LEGACY_DEFAULT_LAYOUT.defaults),
-      sections: {}
-    };
-
-    if (rawLayout && rawLayout.defaults){
-      var overrides = rawLayout.defaults;
-      if (overrides.sheet) layout.defaults.sheet = overrides.sheet;
-      if (overrides.startCell) layout.defaults.startCell = overrides.startCell;
-      if (isFinite(overrides.rowStride)) layout.defaults.rowStride = overrides.rowStride;
-      if (overrides.imageSize) layout.defaults.imageSize = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.imageSize, overrides.imageSize);
-      if (overrides.linkCellOffset) layout.defaults.linkCellOffset = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.linkCellOffset, overrides.linkCellOffset);
-      if (overrides.header) layout.defaults.header = legacyMergeObjects(LEGACY_DEFAULT_LAYOUT.defaults.header, overrides.header);
-    }
-
-    if (!layout.defaults.imageSize) layout.defaults.imageSize = { width: 320, height: 180 };
-    if (!layout.defaults.linkCellOffset) layout.defaults.linkCellOffset = { columns: 2, rows: 0 };
-    if (!layout.defaults.header) layout.defaults.header = { enabled: true, textPrefix: 'Section: ', sheet: null };
-
-    if (rawLayout && rawLayout.sections && typeof rawLayout.sections === 'object'){
-      for (var key in rawLayout.sections){
-        if (!Object.prototype.hasOwnProperty.call(rawLayout.sections, key)) continue;
-        var section = rawLayout.sections[key];
-        if (!section || typeof section !== 'object') continue;
-        var copy = Object.assign({}, section);
-        if (Array.isArray(section.slots)){
-          copy.slots = section.slots.map(function(slot){ return slot && typeof slot === 'object' ? Object.assign({}, slot) : slot; });
-        }
-        if (section.imageSize) copy.imageSize = legacyMergeObjects(layout.defaults.imageSize, section.imageSize);
-        if (section.linkCellOffset) copy.linkCellOffset = legacyMergeObjects(layout.defaults.linkCellOffset, section.linkCellOffset);
-        if (section.header) copy.header = legacyMergeObjects(layout.defaults.header, section.header);
-        layout.sections[key] = copy;
-      }
-    }
-
-    return layout;
-  }
-
-  function legacyComputeLayoutSignature(rawLayout){
-    try {
-      return JSON.stringify(rawLayout || {});
-    } catch(_){
-      return null;
-    }
-  }
-
-  var LEGACY_LAYOUT_SIGNATURE = legacyComputeLayoutSignature(legacyReadLayout() || {});
-  var LEGACY_EVIDENCE_LAYOUT = legacyBuildEvidenceLayout(legacyReadLayout() || {});
-  var LEGACY_SECTION_LAYOUT_CACHE = (typeof Map !== 'undefined') ? new Map() : {};
-
-  function legacyClearLayoutCache(){
-    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) LEGACY_SECTION_LAYOUT_CACHE.clear();
-    else LEGACY_SECTION_LAYOUT_CACHE = {};
-  }
-
-  function legacyResolveLayout(){
-    var rawLayout = legacyReadLayout() || {};
-    var signature = legacyComputeLayoutSignature(rawLayout);
-    if (!LEGACY_EVIDENCE_LAYOUT || signature !== LEGACY_LAYOUT_SIGNATURE){
-      LEGACY_EVIDENCE_LAYOUT = legacyBuildEvidenceLayout(rawLayout);
-      LEGACY_EVIDENCE_LAYOUT.__signature = signature;
-      legacyClearLayoutCache();
-    }
-    if (LEGACY_EVIDENCE_LAYOUT && typeof LEGACY_EVIDENCE_LAYOUT.__signature === 'undefined'){
-      LEGACY_EVIDENCE_LAYOUT.__signature = signature;
-    }
-    LEGACY_LAYOUT_SIGNATURE = signature;
-    return LEGACY_EVIDENCE_LAYOUT;
-  }
-
-  function legacyGetMaxFiles(layout){
-    var effective = layout || legacyResolveLayout();
-    return legacyEnsurePositiveInteger(effective && effective.maxFilesPerSection, LEGACY_DEFAULT_LAYOUT.maxFilesPerSection);
-  }
-
-  function legacyCacheGet(key){
-    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) return LEGACY_SECTION_LAYOUT_CACHE.get(key);
-    return LEGACY_SECTION_LAYOUT_CACHE[key];
-  }
-
-  function legacyCacheSet(key, value){
-    if (LEGACY_SECTION_LAYOUT_CACHE instanceof Map) LEGACY_SECTION_LAYOUT_CACHE.set(key, value);
-    else LEGACY_SECTION_LAYOUT_CACHE[key] = value;
-  }
-
-  if (typeof window !== 'undefined' && typeof window.__ISA315_GET_EFFECTIVE_LAYOUT !== 'function'){
-    try{ window.__ISA315_GET_EFFECTIVE_LAYOUT = legacyResolveLayout; }catch(_){ }
-  }
-
-  function legacyGetSectionLayout(sectionId, layoutArg){
-    var effectiveLayout = layoutArg || legacyResolveLayout();
-    var signature = (effectiveLayout.__signature || LEGACY_LAYOUT_SIGNATURE || 'default');
-    var cacheKey = signature + '::' + sectionId;
-    var cached = legacyCacheGet(cacheKey);
-    if (cached) return cached;
-    var defaults = effectiveLayout.defaults || {};
-    var override = (effectiveLayout.sections && effectiveLayout.sections[sectionId]) || {};
-    var sheet = override.sheet || defaults.sheet || 'Evidence';
-    var startCell = override.startCell || defaults.startCell || 'B2';
-    var rowStride = isFinite(override.rowStride) ? override.rowStride : (isFinite(defaults.rowStride) ? defaults.rowStride : 18);
-    var imageSize = override.imageSize || defaults.imageSize || { width: 320, height: 180 };
-    var linkOffset = override.linkCellOffset || defaults.linkCellOffset || { columns: 2, rows: 0 };
-    var headerDefaults = defaults.header || {};
-    var headerOverride = override.header || {};
-    var header = {
-      enabled: headerOverride.enabled != null ? !!headerOverride.enabled : (headerDefaults.enabled != null ? !!headerDefaults.enabled : true),
-      textPrefix: headerOverride.textPrefix || headerDefaults.textPrefix || 'Section: ',
-      cell: headerOverride.cell || startCell,
-      sheet: headerOverride.sheet || override.sheet || headerDefaults.sheet || sheet
-    };
-
-    var slots = [];
-    var overrideSlots = Array.isArray(override.slots) ? override.slots : [];
-    var maxFiles = legacyGetMaxFiles(effectiveLayout);
-    for (var idx=0; idx<maxFiles; idx++){
-      var slotOverride = overrideSlots[idx];
-      if (slotOverride && typeof slotOverride === 'object'){
-        var slotSize = slotOverride.size || slotOverride.imageSize || imageSize;
-        var slotSheet = slotOverride.sheet || slotOverride.worksheet || sheet;
-        var slotImageCell = slotOverride.imageCell || slotOverride.cell || startCell;
-        var slotLinkCell = slotOverride.linkCell || slotOverride.link;
-        if (!slotLinkCell){
-          var anchor = legacyParseCellAddress(slotImageCell);
-          var colOffset = legacyGetColumnOffset(linkOffset);
-          var rowOffset = legacyGetRowOffset(linkOffset);
-          slotLinkCell = legacyNumberToColumn(Math.max(1, anchor.col + colOffset)) + Math.max(1, anchor.row + rowOffset);
-        }
-        slots.push({
-          id: slotOverride.id || legacyBuildSlotId(sectionId, idx),
-          sheet: slotSheet,
-          imageCell: slotImageCell,
-          linkCell: slotLinkCell,
-          size: slotSize
-        });
-      } else {
-        slots.push(legacyComputeDefaultSlot(sectionId, idx, {
-          sheet: sheet,
-          startCell: startCell,
-          rowStride: rowStride,
-          imageSize: imageSize,
-          linkOffset: linkOffset
-        }));
-      }
-    }
-
-    var layout = { sheet: sheet, startCell: startCell, rowStride: rowStride, imageSize: imageSize, linkOffset: linkOffset, header: header, slots: slots };
-    legacyCacheSet(cacheKey, layout);
-    return layout;
-  }
-
-  legacyResolveLayout();
-
-  function legacyCollectEvidenceSections(layoutArg){
-    var layout = layoutArg || legacyResolveLayout();
-    var maxFiles = legacyGetMaxFiles(layout);
+  function legacyCollectEvidenceSections(){
     var sections = [];
     Array.prototype.forEach.call(document.querySelectorAll('.accordion .acc-item'), function(item){
       var secId = item.getAttribute('data-sec') || '';
       if (!secId || secId === 'project_basics') return;
       var attach = item.querySelector('.q-attach');
-      var files = attach && attach.__evidenceFiles ? Array.prototype.slice.call(attach.__evidenceFiles, 0, maxFiles) : [];
+      var files = attach && attach.__evidenceFiles ? Array.prototype.slice.call(attach.__evidenceFiles, 0, LEGACY_EVIDENCE_EXPORT_CONFIG.maxFilesPerSection) : [];
       if (!files.length) return;
       var titleEl = item.querySelector('.acc-title');
       var title = titleEl ? titleEl.textContent : secId;
@@ -945,33 +649,20 @@
     return sections;
   }
 
-  async function legacyPrepareEvidencePayload(sections, layoutArg){
-    var layout = layoutArg || legacyResolveLayout();
+  async function legacyPrepareEvidencePayload(sections){
     var prepared = [];
-    var usedNames = (typeof Map !== 'undefined') ? new Map() : {};
     for (var i=0; i<sections.length; i++){
       var section = sections[i];
       var items = [];
-      var sectionLayout = legacyGetSectionLayout(section.id, layout);
-      var limit = Math.min(section.files.length, legacyGetMaxFiles(layout));
-      for (var j=0; j<limit; j++){
+      for (var j=0; j<section.files.length && j<LEGACY_EVIDENCE_EXPORT_CONFIG.maxFilesPerSection; j++){
         var file = section.files[j];
         if (!file) continue;
-        var slot = sectionLayout.slots[j] || legacyComputeDefaultSlot(section.id, j, {
-          sheet: sectionLayout.sheet,
-          startCell: sectionLayout.startCell,
-          rowStride: sectionLayout.rowStride,
-          imageSize: sectionLayout.imageSize,
-          linkOffset: sectionLayout.linkOffset
-        });
         var buffer = await file.arrayBuffer();
         var type = file.type || '';
         var extGuess = type.indexOf('image/')===0 ? (type.split('/')[1] || '').toLowerCase() : ((file.name || '').split('.').pop() || '').toLowerCase();
         var normalizedExt = extGuess === 'jpg' ? 'jpeg' : extGuess;
-        var fallbackExt = normalizedExt || (type === 'application/pdf' ? 'pdf' : '');
-        var desiredName = legacySanitizeFileName(file.name, fallbackExt);
+        var finalName = legacySanitizeFileName(file.name, normalizedExt || (type === 'application/pdf' ? 'pdf' : ''));
         var sectionFolder = legacySanitizeSegment(section.id || 'section');
-        var finalName = legacyEnsureUniqueFileName(usedNames, section.id, desiredName);
         var relPath = 'evidence/' + sectionFolder + '/' + finalName;
         var entry = {
           file: file,
@@ -984,9 +675,7 @@
           sectionTitle: section.title,
           isImage: type.indexOf('image/')===0,
           name: file.name || finalName,
-          sectionFolder: sectionFolder,
-          slotIndex: j,
-          slotId: (slot && slot.id) ? slot.id : legacyBuildSlotId(section.id, j)
+          sectionFolder: sectionFolder
         };
         if (entry.isImage){ entry.base64 = legacyArrayBufferToBase64(buffer); }
         items.push(entry);
@@ -996,72 +685,98 @@
     return prepared;
   }
 
-  function legacyApplyEvidenceToWorkbook(workbook, evidence, layoutArg){
+  function legacyApplyEvidenceToWorkbook(workbook, evidence, config){
+    config = config || LEGACY_EVIDENCE_EXPORT_CONFIG;
     if (!evidence || !evidence.length) return;
-    var effectiveLayout = layoutArg || legacyResolveLayout();
     var canUseMap = typeof Map !== 'undefined';
     var sheetCache = canUseMap ? new Map() : {};
+    var defaults = {
+      sheet: config.defaultSheet,
+      startCell: config.defaultStartCell,
+      imageSize: config.defaultImageSize,
+      rowStride: config.defaultRowStride,
+      linkColumnOffset: config.linkColumnOffset
+    };
+    var defaultAnchor = legacyParseCellAddress(config.defaultStartCell || 'B2');
+    var nextDefaultRow = defaultAnchor.row;
 
     function getSheet(name){
-      var key = name || 'Sheet1';
-      if (canUseMap){ if (sheetCache.has(key)) return sheetCache.get(key); }
-      else if (sheetCache[key]) return sheetCache[key];
-      var ws = workbook.getWorksheet(key);
-      if (!ws) ws = workbook.addWorksheet(key);
-      if (canUseMap) sheetCache.set(key, ws); else sheetCache[key] = ws;
+      if (canUseMap){
+        if (sheetCache.has(name)) return sheetCache.get(name);
+      } else if (sheetCache[name]){
+        return sheetCache[name];
+      }
+      var ws = workbook.getWorksheet(name);
+      if (!ws) ws = workbook.addWorksheet(name);
+      if (canUseMap) sheetCache.set(name, ws); else sheetCache[name] = ws;
       return ws;
+    }
+
+    function getSettings(sectionId){
+      var override = (config.sections && config.sections[sectionId]) || {};
+      var settings = {
+        sheet: override.sheet || defaults.sheet,
+        startCell: override.startCell || defaults.startCell,
+        imageSize: override.imageSize || defaults.imageSize,
+        rowStride: typeof override.rowStride === 'number' ? override.rowStride : defaults.rowStride,
+        linkColumnOffset: typeof override.linkColumnOffset === 'number' ? override.linkColumnOffset : defaults.linkColumnOffset
+      };
+      if (!override.startCell){
+        settings.startCell = legacyNumberToColumn(defaultAnchor.col) + nextDefaultRow;
+      }
+      return settings;
+    }
+
+    function toZeroAnchor(addr){
+      var parsed = legacyParseCellAddress(addr || 'A1');
+      return { col: Math.max(parsed.col - 1, 0), row: Math.max(parsed.row - 1, 0) };
     }
 
     for (var i=0; i<evidence.length; i++){
       var section = evidence[i];
-      var layout = legacyGetSectionLayout(section.sectionId, effectiveLayout);
-      var header = layout.header || {};
-      if (header.enabled){
-        var headerSheet = getSheet(header.sheet || layout.sheet);
-        var headerPoint = legacyParseCellAddress(header.cell || layout.startCell);
-        var headerCell = headerSheet.getCell(headerPoint.row, headerPoint.col);
-        headerCell.value = (header.textPrefix || 'Section: ') + section.sectionTitle;
-        headerCell.font = { bold: true };
-      }
+      var settings = getSettings(section.sectionId);
+      var ws = getSheet(settings.sheet);
+      var start = legacyParseCellAddress(settings.startCell);
+      var headerCell = ws.getCell(start.row, start.col);
+      headerCell.value = 'Section: ' + section.sectionTitle;
+      headerCell.font = { bold: true };
+      var stride = settings.rowStride || defaults.rowStride || 18;
+      var hasCustomStart = !!(config.sections && config.sections[section.sectionId] && config.sections[section.sectionId].startCell);
 
       for (var j=0; j<section.items.length; j++){
         var item = section.items[j];
-        var slot = layout.slots[j] || legacyComputeDefaultSlot(section.sectionId, j, {
-          sheet: layout.sheet,
-          startCell: layout.startCell,
-          rowStride: layout.rowStride,
-          imageSize: layout.imageSize,
-          linkOffset: layout.linkOffset
-        });
-        var ws = getSheet(slot.sheet || layout.sheet);
-        var anchorPoint = legacyParseCellAddress(slot.imageCell || layout.startCell);
-        var zeroAnchor = { col: Math.max(anchorPoint.col - 1, 0), row: Math.max(anchorPoint.row - 1, 0) };
-        var size = slot.size || layout.imageSize || (effectiveLayout.defaults && effectiveLayout.defaults.imageSize) || { width: 320, height: 180 };
-        var linkAddress = slot.linkCell || (legacyNumberToColumn(Math.max(1, anchorPoint.col + legacyGetColumnOffset(layout.linkOffset))) + Math.max(1, anchorPoint.row + legacyGetRowOffset(layout.linkOffset)));
-        var linkPoint = legacyParseCellAddress(linkAddress);
-        var linkCell = ws.getCell(linkPoint.row, linkPoint.col);
+        var rowOffset = stride * j;
+        var baseRow = start.row + 1 + rowOffset;
+        var baseCol = start.col;
+        var previewAnchor = toZeroAnchor(legacyNumberToColumn(baseCol) + baseRow);
+        var size = settings.imageSize || defaults.imageSize;
+        var linkOffset = typeof settings.linkColumnOffset === 'number' ? Math.max(0, settings.linkColumnOffset) : 0;
+        var linkCol = Math.max(1, baseCol + linkOffset);
+        var linkCell = ws.getCell(baseRow, linkCol);
         linkCell.value = { text: item.name, hyperlink: item.relativePath };
         linkCell.font = { color: { argb: 'FF1F4E79' }, underline: true };
         linkCell.note = item.type || '';
-        if (slot.id) item.slotId = slot.id;
 
         if (item.isImage && item.base64){
           var imageId = workbook.addImage({ base64: item.base64, extension: item.extension || 'png' });
           ws.addImage(imageId, {
-            tl: { col: zeroAnchor.col, row: zeroAnchor.row },
+            tl: { col: previewAnchor.col, row: previewAnchor.row },
             ext: { width: (size && size.width) || 320, height: (size && size.height) || 180 }
           });
-          var rowsCovered = Math.max(1, Math.ceil(((size && size.height) || 180) / 20));
+          var rowsCovered = Math.ceil(((size && size.height) || 180) / 20);
           for (var r=0; r<rowsCovered; r++){
-            var excelRow = ws.getRow(anchorPoint.row + r);
+            var excelRow = ws.getRow(baseRow + r);
             if (!excelRow.height || excelRow.height < 60) excelRow.height = 60;
           }
         } else {
-          var fallbackPoint = legacyParseCellAddress(slot.imageCell || layout.startCell);
-          var noteCell = ws.getCell(fallbackPoint.row, fallbackPoint.col);
+          var noteCell = ws.getCell(baseRow, baseCol);
           noteCell.value = 'Preview not available';
           noteCell.font = { italic: true, color: { argb: 'FF6E6E6E' } };
         }
+      }
+
+      if (!hasCustomStart){
+        nextDefaultRow = start.row + 1 + stride * Math.max(section.items.length, 1) + 4;
       }
     }
   }
@@ -1142,9 +857,8 @@
               // Collect current answers from the manual form
               var answers = {};
               Array.prototype.forEach.call(document.querySelectorAll('.acc-panel input, .acc-panel textarea, .acc-panel select'), function(el){ if(el.id) answers[el.id] = el.value; });
-              var layout = legacyResolveLayout();
-              var evidenceSections = legacyCollectEvidenceSections(layout);
-              var preparedEvidence = await legacyPrepareEvidencePayload(evidenceSections, layout);
+              var evidenceSections = legacyCollectEvidenceSections();
+              var preparedEvidence = await legacyPrepareEvidencePayload(evidenceSections);
 
               // Build sequential Question-N map (including first section)
               var idsInOrder = [];
@@ -1267,7 +981,7 @@
               });
 
               // Embed evidence previews and hyperlinks
-              legacyApplyEvidenceToWorkbook(wb, preparedEvidence, layout);
+              legacyApplyEvidenceToWorkbook(wb, preparedEvidence, LEGACY_EVIDENCE_EXPORT_CONFIG);
 
               // Package Excel + evidence files into ZIP
               var outBuf = await wb.xlsx.writeBuffer();
