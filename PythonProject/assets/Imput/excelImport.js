@@ -1,4 +1,4 @@
-import { FORM_SCHEMA } from './formschema.js';
+import { FORM_SCHEMA, FORM_QUESTION_INDEX } from '../formschema.js';
 import { savePrefill } from './storage.js';
 import { $, $$ } from '../Output/uiHelpers.js';
 
