@@ -63,15 +63,7 @@ export function renderAccordion(schema, prefill={}){
     const list  = rootEl.querySelector('.q-files');
     if(!drop || !input || !list) return;
 
-    const resolveMaxFiles = () => {
-      try{
-        if (typeof window.__ISA315_GET_EFFECTIVE_LAYOUT === 'function'){
-          const layout = window.__ISA315_GET_EFFECTIVE_LAYOUT();
-          if (layout && typeof layout.maxFilesPerSection === 'number' && layout.maxFilesPerSection > 0){
-            return Math.min(50, Math.max(1, layout.maxFilesPerSection));
-          }
-        }
-      }catch(_){ }
+    const maxFiles = (()=>{
       try{
         const cfg = window.ISA315_EVIDENCE_LAYOUT;
         if (cfg && typeof cfg.maxFilesPerSection === 'number' && cfg.maxFilesPerSection > 0){
@@ -79,9 +71,7 @@ export function renderAccordion(schema, prefill={}){
         }
       }catch(_){ }
       return 10;
-    };
-
-    let maxFiles = resolveMaxFiles();
+    })();
 
     let currentFiles = [];
 
@@ -117,7 +107,6 @@ export function renderAccordion(schema, prefill={}){
     };
 
     const setFiles = (files) => {
-      maxFiles = resolveMaxFiles();
       currentFiles = Array.from(files).slice(0, maxFiles);
       rootEl.__evidenceFiles = currentFiles;
       renderFiles(currentFiles);
@@ -126,7 +115,14 @@ export function renderAccordion(schema, prefill={}){
     const appendFiles = (files) => {
       if(!files || !files.length) return;
       const merged = currentFiles.slice();
-      Array.from(files).forEach(file => { merged.push(file); });
+      Array.from(files).forEach(file => {
+        const duplicate = merged.some(existing => (
+          existing.name === file.name &&
+          existing.size === file.size &&
+          existing.lastModified === file.lastModified
+        ));
+        if (!duplicate) merged.push(file);
+      });
       setFiles(merged);
     };
 
