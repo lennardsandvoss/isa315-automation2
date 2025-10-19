@@ -11,27 +11,10 @@ export function onOverview() {
   const jsonInput  = $('#manualJsonInput');
   const jsonHint   = $('#manualJsonHint');
   const jsonStatus = $('#manualJsonStatus');
-  const jsonHintDefault = jsonHint?.textContent || '';
 
   if(!dz || !input || !useBtn) return;
 
   let selectedFile = null;
-
-  const isJsonFile = (file) => {
-    if (!file) return false;
-    const name = (file.name || '').toLowerCase();
-    if (name.endsWith('.json')) return true;
-    const type = (file.type || '').toLowerCase();
-    return type === 'application/json' || type === 'text/json';
-  };
-
-  const isSpreadsheetFile = (file) => {
-    if (!file) return false;
-    const name = (file.name || '').toLowerCase();
-    if (/\.(xlsx|xlsm|csv)$/i.test(name)) return true;
-    const type = (file.type || '').toLowerCase();
-    return type.includes('spreadsheet') || type === 'text/csv';
-  };
 
   const setJsonStatus = (message='', type='info') => {
     if (!jsonStatus) return;
@@ -43,46 +26,7 @@ export function onOverview() {
     }
   };
 
-  const processJsonPrefill = async (file, origin='dropzone') => {
-    try{
-      if (!file) return;
-      setJsonStatus('Loading JSON answers…', 'info');
-      if (jsonHint){ jsonHint.textContent = 'Importing answers into manual entry…'; }
-      const text = await file.text();
-      const data = JSON.parse(text);
-      if (!data || typeof data !== 'object' || Array.isArray(data)) {
-        throw new Error('Invalid JSON structure');
-      }
-      savePrefill(data);
-      const count = Object.keys(data).length;
-      if (jsonHint){ jsonHint.textContent = 'JSON loaded. Opening manual entry…'; }
-      setJsonStatus(`Loaded ${count} answers. Redirecting to manual entry…`, 'success');
-      setTimeout(()=>{ location.href = 'manuel.html' + location.hash; }, origin === 'button' ? 250 : 400);
-    }catch(err){
-      console.error('[ISA315][JSONImport] Failed to load JSON', err);
-      setJsonStatus('Could not load the JSON file. Ensure it was exported from manual entry.', 'error');
-      if (jsonHint){ jsonHint.textContent = jsonHintDefault || 'Restore a session by selecting the JSON file exported from manual entry.'; }
-    }finally{
-      if (jsonInput) jsonInput.value = '';
-      setFile(null);
-    }
-  };
-
   const setFile = (file) => {
-    selectedFile = null;
-    if (file && isJsonFile(file)) {
-      fileLbl.textContent = `Selected: ${file.name}`;
-      useBtn.disabled = true;
-      hint.textContent = 'Processing JSON answers…';
-      processJsonPrefill(file, 'dropzone');
-      return;
-    }
-    if (file && !isSpreadsheetFile(file)) {
-      hint.textContent = 'Use .xlsx, .xlsm, .csv, or .json';
-      fileLbl.textContent = '';
-      useBtn.disabled = true;
-      return;
-    }
     selectedFile = file || null;
     if(selectedFile){
       fileLbl.textContent = `Selected: ${selectedFile.name}`;
@@ -91,7 +35,7 @@ export function onOverview() {
     }else{
       fileLbl.textContent = '';
       useBtn.disabled = true;
-      hint.textContent = 'Accepted: .xlsx, .xlsm, .csv, .json';
+      hint.textContent = 'Accepted: .xlsx, .xlsm, .csv';
     }
   };
 
@@ -106,10 +50,8 @@ export function onOverview() {
   dz.addEventListener('drop', (e)=>{
     const f = e.dataTransfer?.files?.[0];
     if(!f) return;
-    if (!isSpreadsheetFile(f) && !isJsonFile(f)) {
-      hint.textContent = 'Use .xlsx, .xlsm, .csv, or .json';
-      return;
-    }
+    const ok = /\.(xlsx|xlsm|csv)$/i.test(f.name);
+    if(!ok){ hint.textContent = 'Use .xlsx, .xlsm or .csv'; return; }
     setFile(f);
   });
   dz.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); input.click(); } });
@@ -117,19 +59,28 @@ export function onOverview() {
   jsonInput?.addEventListener('change', async (e)=>{
     const file = e.target.files?.[0];
     if (!file) return;
-    await processJsonPrefill(file, 'button');
+    try{
+      setJsonStatus('', 'info');
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || Array.isArray(data)){
+        throw new Error('Invalid payload');
+      }
+      savePrefill(data);
+      const count = Object.keys(data).length;
+      if (jsonHint){ jsonHint.textContent = 'JSON loaded. Opening manual entry…'; }
+      setJsonStatus(`Loaded ${count} answers. Redirecting to manual entry…`, 'success');
+      setTimeout(()=>{ location.href = 'manuel.html' + location.hash; }, 400);
+    }catch(err){
+      console.error('[ISA315][JSONImport] Failed to load JSON', err);
+      setJsonStatus('Could not load the JSON file. Ensure it was exported from manual entry.', 'error');
+    }finally{
+      e.target.value = '';
+    }
   });
 
   useBtn.addEventListener('click', async ()=>{
-    if(!selectedFile){
-      alert('Please select a file.');
-      return;
-    }
-
-    if (isJsonFile(selectedFile)) {
-      await processJsonPrefill(selectedFile, 'button');
-      return;
-    }
+    if(!selectedFile) return alert('Please select a file.');
 
     try{
       if (typeof XLSX === 'undefined') {
